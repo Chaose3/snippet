@@ -25,12 +25,14 @@ export default function Home() {
     setHydrated(true);
     const t = getStoredToken();
     setToken(t);
+    if (t) setUrlError(null);
 
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
     const detail = params.get("detail");
     if (err) {
-      setUrlError(detail || err);
+      // Only show the error if the user isn't already logged in
+      if (!t) setUrlError(detail || err);
       window.history.replaceState({}, "", "/");
     }
   }, []);
