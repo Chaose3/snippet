@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DEFAULT_SNIPPET, playSnippet, snippetAtPositionMs } from "../lib/snippet";
+import { playSnippet, getCurrentlyPlaying } from "../lib/snippet";
 
 const STORAGE_KEY = "spotify_access_token";
 
@@ -44,7 +44,22 @@ export default function Home() {
       return;
     }
 
-    const res = await playSnippet(t, DEFAULT_SNIPPET);
+    // Get currently playing track
+    const current = await getCurrentlyPlaying(t);
+    if (!current) {
+      alert("No track currently playing. Start playing a song in Spotify first.");
+      return;
+    }
+
+    // Create snippet for current track at 1:00
+    const snippet = {
+      id: current.id,
+      label: `${current.name} by ${current.artists}`,
+      trackUri: current.uri,
+      positionMs: 60000,
+    };
+
+    const res = await playSnippet(t, snippet);
 
     if (res.status === 204) {
       console.log("[play] success (204 No Content)");
@@ -85,8 +100,23 @@ export default function Home() {
       alert("No Spotify session. Log in first.");
       return;
     }
-    const custom = snippetAtPositionMs(DEFAULT_SNIPPET, 90_000);
-    const res = await playSnippet(t, custom);
+
+    // Get currently playing track
+    const current = await getCurrentlyPlaying(t);
+    if (!current) {
+      alert("No track currently playing. Start playing a song in Spotify first.");
+      return;
+    }
+
+    // Create snippet for current track at 1:30
+    const snippet = {
+      id: current.id,
+      label: `${current.name} by ${current.artists}`,
+      trackUri: current.uri,
+      positionMs: 90000,
+    };
+
+    const res = await playSnippet(t, snippet);
     if (res.status === 204) {
       console.log("[play 90s] ok");
       return;
