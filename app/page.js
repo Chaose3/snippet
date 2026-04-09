@@ -134,23 +134,31 @@ export default function Home() {
 
   // ── Playback ─────────────────────────────────────────────────────────────────
 
-  const jump = useCallback(
-    async (trackUri, positionMs) => {
-      const t = getStoredToken();
-      if (!t) return;
-      const res = await playSnippet(t, { trackUri, positionMs });
-      if (res.status === 401) {
-        localStorage.removeItem(STORAGE_KEY);
-        setToken(null);
-        return;
-      }
-      if (res.ok || res.status === 204) {
-        lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
-        setEstimatedPos(positionMs);
-      }
-    },
-    []
-  );
+  const jump = useCallback(async (trackUri, positionMs) => {
+    if (!trackUri || trackUri.startsWith("spotify:local:")) return;
+    const t = getStoredToken();
+    if (!t) return;
+    const res = await playSnippet(t, { trackUri, positionMs });
+    if (res.status === 204 || res.ok) {
+      lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
+      setEstimatedPos(positionMs);
+      return;
+    }
+    if (res.status === 401) {
+      localStorage.removeItem(STORAGE_KEY);
+      setToken(null);
+      return;
+    }
+    if (res.status === 404) {
+      alert("No active Spotify device. Open Spotify on any device and start playing something first, then try again.");
+      return;
+    }
+    if (res.status === 403) {
+      alert("Spotify Premium is required for playback control.");
+      return;
+    }
+    console.error("[jump] unexpected status", res.status);
+  }, []);
 
   // ── Timestamps ───────────────────────────────────────────────────────────────
 
