@@ -1,8 +1,6 @@
 import { NextResponse } from "next/server";
-import { generateCodeChallenge, generateCodeVerifier } from "../../../lib/pkce";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
-const PKCE_COOKIE = "spotify_pkce_verifier";
 
 const SCOPES = [
   "user-read-playback-state",
@@ -12,7 +10,7 @@ const SCOPES = [
   "user-library-read",
 ].join(" ");
 
-export async function GET() {
+export async function GET(request) {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
 
   if (!clientId) {
@@ -23,8 +21,16 @@ export async function GET() {
     );
   }
 
-  const codeVerifier = generateCodeVerifier();
-  const codeChallenge = generateCodeChallenge(codeVerifier);
+  const { searchParams } = new URL(request.url);
+  const codeChallenge = searchParams.get("code_challenge");
+  const verifier = searchParams.get("verifier");
+
+  if (!codeChallenge || !verifier) {
+    return NextResponse.json(
+      { error: "Missing code_challenge or verifier. Use the Login button — do not navigate here directly." },
+      { status: 400 }
+    );
+  }
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -33,20 +39,11 @@ export async function GET() {
     scope: SCOPES,
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
+    state: verifier, // Spotify echoes this back in the callback URL unchanged
     show_dialog: "true",
   });
 
   const url = `https://accounts.spotify.com/authorize?${params.toString()}`;
-  console.log("[api/login] redirecting to Spotify (authorization code + PKCE)");
-
-  const res = NextResponse.redirect(url);
-  res.cookies.set(PKCE_COOKIE, codeVerifier, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    path: "/",
-    maxAge: 600,
-  });
-
-  return res;
+  console.log("[api/login] redirecting to Spotify (client-side PKCE)");
+  return NextResponse.redirect(url);
 }

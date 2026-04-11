@@ -14,17 +14,30 @@ getPlaylistTracks,
   seekToPosition,
 } from "../lib/snippet";
 import {
-  getTimestamps,
+  fetchAllTimestamps,
   saveTimestamp,
   deleteTimestamp,
   formatMs,
 } from "../lib/timestamps";
 
 const STORAGE_KEY = "spotify_access_token";
+const STORAGE_REFRESH = "spotify_refresh_token";
+const STORAGE_EXPIRES = "spotify_token_expires_at";
 
 function getStoredToken() {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(STORAGE_KEY);
+}
+
+function getStoredRefreshToken() {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem(STORAGE_REFRESH);
+}
+
+function getStoredExpiry() {
+  if (typeof window === "undefined") return null;
+  const v = localStorage.getItem(STORAGE_EXPIRES);
+  return v ? Number(v) : null;
 }
 
 export default function Home() {
@@ -40,8 +53,8 @@ export default function Home() {
   const lastPollRef = useRef(null);
   const isSeekingRef = useRef(false);
 
-  // Incrementing this causes the library + now-playing timestamp lists to re-read from localStorage
-  const [, setTsVersion] = useState(0);
+  // All timestamps for the logged-in user, keyed by trackId
+  const [allTimestamps, setAllTimestamps] = useState({});
 
   // Library
   const [playlists, setPlaylists] = useState([]);
@@ -55,6 +68,54 @@ export default function Home() {
 
   // Track detail modal
   const [selectedTrack, setSelectedTrack] = useState(null);
+
+  // ── Token refresh ───────────────────────────────────────────────────────────
+
+  const doRefresh = useCallback(async () => {
+    const refreshToken = getStoredRefreshToken();
+    if (!refreshToken) return null;
+
+    const res = await fetch("/api/refresh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+
+    if (!res.ok) {
+      console.warn("[doRefresh] refresh failed", res.status);
+      return null;
+    }
+
+    const data = await res.json();
+    const newToken = data.access_token;
+    const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
+
+    localStorage.setItem(STORAGE_KEY, newToken);
+    localStorage.setItem(STORAGE_EXPIRES, String(expiresAt));
+    if (data.refresh_token) {
+      localStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+    }
+
+    setToken(newToken);
+    console.log("[doRefresh] token refreshed, expires in", data.expires_in, "s");
+    return newToken;
+  }, []);
+
+  // Proactive refresh: fire 5 minutes before expiry
+  useEffect(() => {
+    if (!token) return;
+    const expiry = getStoredExpiry();
+    if (!expiry) return;
+
+    const msUntilRefresh = expiry - Date.now() - 5 * 60 * 1000;
+    if (msUntilRefresh <= 0) {
+      doRefresh();
+      return;
+    }
+
+    const id = setTimeout(() => doRefresh(), msUntilRefresh);
+    return () => clearTimeout(id);
+  }, [token, doRefresh]);
 
   // ── Init ────────────────────────────────────────────────────────────────────
 
@@ -107,6 +168,13 @@ export default function Home() {
     }, 500);
     return () => clearInterval(id);
   }, []);
+
+  // ── Timestamps (DB) ─────────────────────────────────────────────────────────
+
+  useEffect(() => {
+    if (!token) { setAllTimestamps({}); return; }
+    fetchAllTimestamps(token).then(setAllTimestamps);
+  }, [token]);
 
   // ── Library ─────────────────────────────────────────────────────────────────
 
@@ -172,8 +240,20 @@ export default function Home() {
       return;
     }
     if (res.status === 401) {
-      localStorage.removeItem(STORAGE_KEY);
-      setToken(null);
+      const newToken = await doRefresh();
+      if (!newToken) {
+        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(STORAGE_REFRESH);
+        localStorage.removeItem(STORAGE_EXPIRES);
+        setToken(null);
+        return;
+      }
+      // Retry once with the new token
+      const retry = await playSnippet(newToken, { trackUri, positionMs });
+      if (retry.status === 204 || retry.ok) {
+        lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
+        setEstimatedPos(positionMs);
+      }
       return;
     }
     if (res.status === 404) {
@@ -249,27 +329,46 @@ export default function Home() {
     setPlayerState((prev) => prev ? { ...prev, shuffle: next } : prev);
   }, [playerState]);
 
-  const handleSaveTimestamp = useCallback(() => {
+  const handleSaveTimestamp = useCallback(async () => {
     if (!playerState) return;
+    const t = getStoredToken();
+    if (!t) return;
     const label = labelInput.trim() || null;
-    saveTimestamp(playerState.id, Math.floor(estimatedPos), label);
-    setTsVersion((v) => v + 1);
+    const updated = await saveTimestamp(t, playerState.id, Math.floor(estimatedPos), label);
+    if (updated) setAllTimestamps((prev) => ({ ...prev, [playerState.id]: updated }));
     setLabelInput("");
   }, [playerState, estimatedPos, labelInput]);
 
-  const handleDelete = useCallback((trackId, index) => {
-    deleteTimestamp(trackId, index);
-    setTsVersion((v) => v + 1);
+  const handleDelete = useCallback(async (trackId, index) => {
+    const t = getStoredToken();
+    if (!t) return;
+    const updated = await deleteTimestamp(t, trackId, index);
+    setAllTimestamps((prev) => {
+      const next = { ...prev };
+      if (updated && updated.length > 0) {
+        next[trackId] = updated;
+      } else {
+        delete next[trackId];
+      }
+      return next;
+    });
   }, []);
 
   // ── Auth ─────────────────────────────────────────────────────────────────────
 
-  const goLogin = () => {
-    window.location.href = "/api/login";
+  const goLogin = async () => {
+    const { generateCodeVerifier, generateCodeChallenge } = await import("../lib/pkce-browser");
+    const verifier = generateCodeVerifier();
+    const challenge = await generateCodeChallenge(verifier);
+    // Pass verifier as state — Spotify echoes it back in the callback URL,
+    // so no cross-origin storage (sessionStorage/cookies) is needed.
+    window.location.href = `/api/login?code_challenge=${encodeURIComponent(challenge)}&verifier=${encodeURIComponent(verifier)}`;
   };
 
   const handleLogout = () => {
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(STORAGE_REFRESH);
+    localStorage.removeItem(STORAGE_EXPIRES);
     setToken(null);
     setPlayerState(null);
     setPlaylists([]);
@@ -286,7 +385,7 @@ export default function Home() {
   if (!hydrated) return <main style={s.main}><p style={s.muted}>Loading…</p></main>;
 
   const nowPlayingTimestamps = playerState
-    ? getTimestamps(playerState.id)
+    ? (allTimestamps[playerState.id] || [])
     : [];
 
   return (
@@ -371,7 +470,7 @@ export default function Home() {
                     onChange={handleSeekChange}
                     onMouseUp={handleSeekCommit}
                     onTouchEnd={handleSeekCommit}
-                    style={s.seekSlider}
+                    style={{...s.seekSlider, background: `linear-gradient(to right, ${ORANGE} 0%, ${ORANGE} ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a 100%)`}}
                   />
                   <div style={s.times}>
                     <span>{formatMs(estimatedPos)}</span>
@@ -403,7 +502,7 @@ export default function Home() {
                     max={100}
                     value={volume ?? 50}
                     onChange={handleVolumeChange}
-                    style={s.volumeSlider}
+                    style={{...s.volumeSlider, background: `linear-gradient(to right, ${ORANGE} 0%, ${ORANGE} ${volume ?? 50}%, #2a2a3a ${volume ?? 50}%, #2a2a3a 100%)`}}
                     title={`Volume: ${volume ?? 50}%`}
                   />
                   <span style={s.volumeLabel}>{volume ?? 50}%</span>
@@ -485,7 +584,7 @@ export default function Home() {
                         const q = searchQuery.toLowerCase();
                         return track.name.toLowerCase().includes(q) || track.artists.toLowerCase().includes(q);
                       }).map((track) => {
-                        const tss = getTimestamps(track.id);
+                        const tss = allTimestamps[track.id] || [];
                         return (
                           <div key={track.id} style={s.trackRow}>
                             <div style={{ ...s.trackLeft, cursor: "pointer" }} onClick={() => setSelectedTrack(track)}>
@@ -574,7 +673,7 @@ export default function Home() {
                             <p style={{ ...s.muted, padding: "0.75rem" }}>{searchQuery ? "No matches." : "No tracks found."}</p>
                           ) : (
                             tracks.map((track) => {
-                              const tss = getTimestamps(track.id);
+                              const tss = allTimestamps[track.id] || [];
                               return (
                                 <div key={track.id} style={s.trackRow}>
                                   <div style={s.trackLeft}>
@@ -630,7 +729,7 @@ export default function Home() {
       {/* ── Track Detail Modal ── */}
       {selectedTrack && (() => {
         const isCurrentTrack = playerState?.id === selectedTrack.id;
-        const tss = getTimestamps(selectedTrack.id);
+        const tss = allTimestamps[selectedTrack.id] || [];
         return (
           <div style={s.modalOverlay} onClick={() => setSelectedTrack(null)}>
             <div style={s.modalSheet} onClick={e => e.stopPropagation()}>
@@ -670,7 +769,8 @@ export default function Home() {
                     onChange={handleSeekChange}
                     onMouseUp={handleSeekCommit}
                     onTouchEnd={handleSeekCommit}
-                    style={s.modalSeek}
+                    /*Playback progress bar*/
+                    style={{...s.modalSeek, background: `linear-gradient(to right, ${ORANGE} 0%, ${ORANGE} ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a 100%)`}}
                   />
                   <div style={s.modalTimes}>
                     <span>{formatMs(estimatedPos)}</span>

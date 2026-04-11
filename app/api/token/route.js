@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
-import { cookies } from "next/headers";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
-const PKCE_COOKIE = "spotify_pkce_verifier";
 
 /**
  * Exchange authorization code for tokens (PKCE — no client secret).
+ * Expects { code, code_verifier } in the JSON body.
  */
 export async function POST(request) {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -24,22 +23,13 @@ export async function POST(request) {
   }
 
   const code = body?.code;
+  const codeVerifier = body?.code_verifier;
+
   if (!code || typeof code !== "string") {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
   }
-
-  const cookieStore = await cookies();
-  const codeVerifier = cookieStore.get(PKCE_COOKIE)?.value;
-
-  if (!codeVerifier) {
-    console.error("[api/token] no PKCE cookie — restart login from /api/login");
-    return NextResponse.json(
-      {
-        error:
-          "Missing PKCE session. Click “Login with Spotify” again (do not bookmark the callback URL).",
-      },
-      { status: 400 }
-    );
+  if (!codeVerifier || typeof codeVerifier !== "string") {
+    return NextResponse.json({ error: "Missing code_verifier" }, { status: 400 });
   }
 
   const params = new URLSearchParams({
@@ -58,8 +48,6 @@ export async function POST(request) {
 
   const text = await tokenRes.text();
   console.log("[api/token] Spotify token response status", tokenRes.status);
-
-  cookieStore.delete(PKCE_COOKIE);
 
   if (!tokenRes.ok) {
     console.error("[api/token] Spotify error", text);

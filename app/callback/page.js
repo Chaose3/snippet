@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 
 const STORAGE_ACCESS = "spotify_access_token";
 const STORAGE_REFRESH = "spotify_refresh_token";
+const STORAGE_EXPIRES = "spotify_token_expires_at";
 
 export default function CallbackPage() {
   const router = useRouter();
@@ -18,6 +19,7 @@ export default function CallbackPage() {
     const error = params.get("error");
     const errorDescription = params.get("error_description");
     const code = params.get("code");
+    const codeVerifier = params.get("state"); // verifier we sent via OAuth state param
 
     console.log("[callback] query", {
       hasCode: Boolean(code),
@@ -40,6 +42,11 @@ export default function CallbackPage() {
       return;
     }
 
+    if (!codeVerifier) {
+      router.replace("/?error=pkce_missing&detail=Missing%20PKCE%20verifier%20%E2%80%94%20please%20log%20in%20again");
+      return;
+    }
+
     let cancelled = false;
 
     (async () => {
@@ -47,8 +54,7 @@ export default function CallbackPage() {
         const res = await fetch("/api/token", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({ code }),
+          body: JSON.stringify({ code, code_verifier: codeVerifier }),
         });
 
         const data = await res.json().catch(() => ({}));
@@ -72,6 +78,10 @@ export default function CallbackPage() {
         if (data.refresh_token) {
           localStorage.setItem(STORAGE_REFRESH, data.refresh_token);
           console.log("[callback] refresh_token stored");
+        }
+        if (data.expires_in) {
+          const expiresAt = Date.now() + data.expires_in * 1000;
+          localStorage.setItem(STORAGE_EXPIRES, String(expiresAt));
         }
 
         window.history.replaceState({}, "", "/callback");
