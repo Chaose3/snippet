@@ -391,7 +391,7 @@ export default function Home() {
   return (
     <main style={s.main}>
       <header style={s.header}>
-        <svg width="130" height="34" viewBox="0 0 130 34" style={{ flexShrink: 0, display: "block" }}>
+        <svg viewBox="46 13.5 38 7" style={{ height: "68px", width: "auto", flexShrink: 0, display: "block", margin: "0 auto" }}>
           <defs>
             <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
               <stop offset="0%" stopColor="#ff5500" />
@@ -412,20 +412,10 @@ export default function Home() {
           <rect x="0" y="0" width="130" height="34" fill="url(#logoGrad)" mask="url(#logoMask)" />
         </svg>
         {token && (
-          <input
-            style={s.searchInput}
-            placeholder="Search library…"
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
-        )}
-        <div style={s.headerRight}>
-          {token ? (
+          <div style={s.headerRight}>
             <button style={s.btnGhost} onClick={handleLogout}>Log out</button>
-          ) : (
-            <button style={s.btnPrimary} onClick={goLogin}>Login with Spotify</button>
-          )}
-        </div>
+          </div>
+        )}
       </header>
 
       {urlError && <p style={s.error}>Login issue: {urlError}</p>}
@@ -556,6 +546,12 @@ export default function Home() {
           {/* ── My Library ── */}
           <div style={s.librarySection}>
             <p style={s.libraryLabel}>Your Library</p>
+            <input
+              style={s.searchInput}
+              placeholder="Search library…"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
             <div style={s.libraryBody}>
               {/* Liked Songs */}
               <div style={s.playlistWrap}>
@@ -845,7 +841,7 @@ const s = {
   },
   headerRight: { display: "flex", gap: "0.5rem", flexShrink: 0 },
   searchInput: {
-    flex: 1, padding: "0.45rem 0.85rem", borderRadius: 10,
+    width: "100%", boxSizing: "border-box", padding: "0.45rem 0.85rem", borderRadius: 10,
     border: "1px solid rgba(255,255,255,0.08)",
     background: "rgba(255,255,255,0.05)",
     color: "#f0f0f5", fontSize: "0.82rem", outline: "none",
