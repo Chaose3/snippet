@@ -1,0 +1,30 @@
+{
+  "expo": {
+    "name": "Snippet",
+    "slug": "snippet",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "scheme": "snippet",
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0a0a10"
+    },
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.snippet.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#0a0a10"
+      },
+      "package": "com.snippet.app"
+    },
+    "plugins": [
+      "expo-secure-store"
+    ]
+  }
+}
