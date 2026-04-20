@@ -45,6 +45,8 @@ export default function Home() {
   const [hydrated, setHydrated] = useState(false);
   const [urlError, setUrlError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [activeTab, setActiveTab] = useState("home");
+  const [pressedTab, setPressedTab] = useState(null);
 
   // Now Playing
   const [playerState, setPlayerState] = useState(null);
@@ -380,6 +382,12 @@ export default function Home() {
     lastPollRef.current = null;
   };
 
+  const handleTabPress = useCallback((tab) => {
+    setPressedTab(tab);
+    setActiveTab(tab);
+    setTimeout(() => setPressedTab(null), 150);
+  }, []);
+
   // ── Render ───────────────────────────────────────────────────────────────────
 
   if (!hydrated) return <main style={s.main}><p style={s.muted}>Loading…</p></main>;
@@ -436,6 +444,8 @@ export default function Home() {
         </div>
       ) : (
         <>
+          {/* ── Home Tab ── */}
+          {activeTab === "home" && (<>
           {/* ── Now Playing ── */}
           {!playerState ? (
             <p style={{ ...s.muted, marginBottom: "1.5rem" }}>
@@ -719,6 +729,86 @@ export default function Home() {
               )}
             </div>
           </div>
+          </>)}
+
+          {/* ── Search Tab ── */}
+          {activeTab === "search" && (
+            <div style={s.searchTab}>
+              <p style={s.tabHeading}>Search</p>
+              <input
+                style={{ ...s.searchInput, fontSize: "0.95rem", padding: "0.7rem 1rem", marginBottom: "1.25rem" }}
+                placeholder="Search songs, artists…"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                autoFocus
+              />
+              {!searchQuery ? (
+                <p style={{ ...s.muted, textAlign: "center", marginTop: "3rem" }}>
+                  Start typing to search your library
+                </p>
+              ) : (
+                <div style={s.libraryBody}>
+                  {[
+                    ...(likedTracks || []),
+                    ...Object.values(playlistTracks).flat(),
+                  ]
+                    .filter((t, i, all) => all.findIndex((x) => x.id === t.id) === i)
+                    .filter((t) => {
+                      const q = searchQuery.toLowerCase();
+                      return t.name.toLowerCase().includes(q) || t.artists.toLowerCase().includes(q);
+                    })
+                    .map((track) => {
+                      const tss = allTimestamps[track.id] || [];
+                      return (
+                        <div key={track.id} style={s.trackRow}>
+                          <div style={{ ...s.trackLeft, cursor: "pointer" }} onClick={() => setSelectedTrack(track)}>
+                            {track.albumArt ? (
+                              <img src={track.albumArt} alt="" style={s.trackArt} />
+                            ) : (
+                              <div style={s.trackArtFallback} />
+                            )}
+                            <div style={s.trackMeta}>
+                              <span style={s.trackRowName}>{track.name}</span>
+                              <span style={s.trackRowArtist}>{track.artists}</span>
+                              {tss.length > 0 && (
+                                <div style={s.chipRow}>
+                                  {tss.map((ts, i) => (
+                                    <button key={i} style={s.chip} onClick={() => jump(track.uri, ts.positionMs)} title={ts.label}>
+                                      {ts.label}
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          <div style={s.trackRight}>
+                            <span style={s.trackDuration}>{formatMs(track.durationMs)}</span>
+                            <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">▶</button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Profile Tab ── */}
+          {activeTab === "profile" && (
+            <div style={s.profileTab}>
+              <div style={s.profileAvatarWrap}>
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="8" r="4" />
+                  <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+                </svg>
+              </div>
+              <p style={s.profileTitle}>Your Account</p>
+              <p style={{ ...s.muted, marginBottom: "2.5rem" }}>Connected via Spotify</p>
+              <button style={{ ...s.btnGhost, padding: "0.6rem 1.75rem" }} onClick={handleLogout}>
+                Log out of Spotify
+              </button>
+            </div>
+          )}
         </>
       )}
 
@@ -815,6 +905,59 @@ export default function Home() {
           </div>
         );
       })()}
+      {/* ── Bottom Nav ── */}
+      {token && (() => {
+        const tabs = [
+          {
+            id: "home",
+            label: "Home",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M3 10.5L12 3l9 7.5V20a1 1 0 01-1 1H4a1 1 0 01-1-1V10.5z" />
+                <path d="M9 21V13h6v8" />
+              </svg>
+            ),
+          },
+          {
+            id: "search",
+            label: "Search",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="7.5" />
+                <line x1="21" y1="21" x2="16.5" y2="16.5" />
+              </svg>
+            ),
+          },
+          {
+            id: "profile",
+            label: "Profile",
+            icon: (
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="8" r="4" />
+                <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+              </svg>
+            ),
+          },
+        ];
+        return (
+          <nav style={s.bottomNav}>
+            {tabs.map(({ id, label, icon }) => (
+              <button
+                key={id}
+                aria-label={label}
+                style={{
+                  ...s.navBtn,
+                  ...(activeTab === id ? s.navBtnActive : {}),
+                  transform: pressedTab === id ? "scale(0.8)" : "scale(1)",
+                }}
+                onClick={() => handleTabPress(id)}
+              >
+                {icon}
+              </button>
+            ))}
+          </nav>
+        );
+      })()}
     </main>
   );
 }
@@ -826,7 +969,7 @@ const GRAD = "linear-gradient(135deg, #ff5500 -124%, #7b31c7 224%)";
 const s = {
   main: {
     padding: "1.5rem", maxWidth: 600, margin: "0 auto",
-    paddingBottom: "4rem",
+    paddingBottom: "7rem",
   },
 
   // ── Header ──
@@ -1069,6 +1212,83 @@ const s = {
     background: "rgba(255,255,255,0.04)",
     color: "#8888aa", cursor: "pointer", fontSize: "0.82rem",
     transition: "border-color 0.15s",
+  },
+
+  // ── Bottom Nav ──
+  bottomNav: {
+    position: "fixed",
+    bottom: "1.5rem",
+    left: "50%",
+    transform: "translateX(-50%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: "2.25rem",
+    padding: "0.875rem 2.75rem",
+    background: "rgba(12, 12, 20, 0.88)",
+    backdropFilter: "blur(24px)",
+    WebkitBackdropFilter: "blur(24px)",
+    borderRadius: 9999,
+    border: "1px solid rgba(255,255,255,0.1)",
+    boxShadow: "0 8px 40px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.06)",
+    zIndex: 50,
+  },
+  navBtn: {
+    background: "none",
+    border: "none",
+    cursor: "pointer",
+    color: "rgba(255,255,255,0.38)",
+    padding: "0.2rem",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 0,
+    transition: "transform 0.15s ease, color 0.15s ease",
+    borderRadius: 8,
+  },
+  navBtnActive: {
+    color: "#ffffff",
+    filter: "drop-shadow(0 0 8px rgba(255,255,255,0.35))",
+  },
+
+  // ── Search Tab ──
+  searchTab: {
+    paddingTop: "0.25rem",
+  },
+  tabHeading: {
+    fontSize: "1.35rem",
+    fontWeight: 800,
+    margin: "0 0 1rem",
+    letterSpacing: "-0.025em",
+    color: "#f0f0f5",
+  },
+
+  // ── Profile Tab ──
+  profileTab: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    paddingTop: "4rem",
+    textAlign: "center",
+  },
+  profileAvatarWrap: {
+    width: 96,
+    height: 96,
+    borderRadius: "50%",
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: "1.25rem",
+    color: "rgba(255,255,255,0.35)",
+  },
+  profileTitle: {
+    fontSize: "1.5rem",
+    fontWeight: 800,
+    margin: "0 0 0.35rem",
+    letterSpacing: "-0.025em",
+    color: "#f0f0f5",
   },
 
   // ── Track Detail Modal ──
