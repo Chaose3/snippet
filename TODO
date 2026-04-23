@@ -1,7 +1,4 @@
 Fix centering on the main page
-Move the logout to be in the top right corner and make the SNIPPET logo be the same size on both pages
-Add the snippet scissors for the play slider
-Ask Nick about what color we should use for the icons
 Fix off centered-ness on mobile view
 Next to the playing songs showcase how many snippets their are for that song
 
@@ -9,3 +6,4 @@ Make it so that i can log in through the spotify open in app instead of log in
 Snippets category on the playlist page
 Add a page for removing snippets
 Some form of slider for going from only snippets to the full song on the play page
+Make the search bar search through all spotify songs

@@ -8,7 +8,8 @@
       "Bash(node -e \"const v=JSON.parse\\(require\\('fs'\\).readFileSync\\('/dev/stdin','utf8'\\)\\); const filtered=v.filter\\(x=>x.startsWith\\('14.'\\)||x.startsWith\\('15.'\\)\\).slice\\(-20\\); console.log\\(filtered.join\\('\\\\n'\\)\\)\")",
       "Bash(npm audit:*)",
       "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "Bash(node *)"
     ]
   }
 }

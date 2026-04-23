@@ -73,11 +73,10 @@ export default function CallbackPage() {
 
         if (data.access_token) {
           localStorage.setItem(STORAGE_ACCESS, data.access_token);
-          console.log("[callback] access_token stored");
+          localStorage.setItem("spotify_granted_scopes", data.scope ?? "");
         }
         if (data.refresh_token) {
           localStorage.setItem(STORAGE_REFRESH, data.refresh_token);
-          console.log("[callback] refresh_token stored");
         }
         if (data.expires_in) {
           const expiresAt = Date.now() + data.expires_in * 1000;

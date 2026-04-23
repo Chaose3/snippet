@@ -13,6 +13,7 @@ import {
   setVolume,
   seekToPosition,
   getDevices,
+  getTracksByIds,
 } from "../lib/snippet";
 import {
   fetchAllTimestamps,
@@ -71,9 +72,11 @@ export default function Home() {
 
   // Library
   const [playlists, setPlaylists] = useState([]);
+  const [playlistsLoaded, setPlaylistsLoaded] = useState(false);
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
   const [playlistTracks, setPlaylistTracks] = useState({}); // playlistId → track[]
   const [loadingPlaylistId, setLoadingPlaylistId] = useState(null);
+  const [playlistErrors, setPlaylistErrors] = useState({});
 
   // Liked Songs
   const [likedOpen, setLikedOpen] = useState(false);
@@ -85,6 +88,9 @@ export default function Home() {
   // Snippet editing
   const [editingSnippet, setEditingSnippet] = useState(null); // { trackId, index, label }
   const [editLabel, setEditLabel] = useState("");
+
+  // Track metadata fetched specifically for the snippets section
+  const [snippetTrackMeta, setSnippetTrackMeta] = useState({});
 
   // ── Token refresh ───────────────────────────────────────────────────────────
 
@@ -252,12 +258,32 @@ export default function Home() {
     fetchAllTimestamps(token).then(setAllTimestamps);
   }, [token]);
 
+  // Fetch track metadata for any snippet tracks not already in the loaded library
+  useEffect(() => {
+    const ids = Object.keys(allTimestamps);
+    if (!ids.length) return;
+    const t = getStoredToken();
+    if (!t) return;
+    const missing = ids.filter((id) => !snippetTrackMeta[id]);
+    if (!missing.length) return;
+    getTracksByIds(t, missing).then((tracks) => {
+      setSnippetTrackMeta((prev) => {
+        const next = { ...prev };
+        tracks.forEach((tr) => { next[tr.id] = tr; });
+        return next;
+      });
+    });
+  }, [allTimestamps]);
+
   // ── Library ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (!token || playlists.length > 0) return;
-    getUserPlaylists(token).then(setPlaylists);
-  }, [token, playlists.length]);
+    if (!token || playlistsLoaded) return;
+    getUserPlaylists(token).then((list) => {
+      setPlaylists(list);
+      setPlaylistsLoaded(true);
+    });
+  }, [token, playlistsLoaded]);
 
   // When searching, eagerly load liked tracks and all playlist tracks
   useEffect(() => {
@@ -292,13 +318,18 @@ export default function Home() {
         return;
       }
       setOpenPlaylistId(playlistId);
-      if (playlistTracks[playlistId]) return; // already cached
+      if (playlistTracks[playlistId]?.length > 0) return; // already cached with results
       const t = getStoredToken();
       if (!t) return;
       setLoadingPlaylistId(playlistId);
-      const tracks = await getPlaylistTracks(t, playlistId);
-      setPlaylistTracks((prev) => ({ ...prev, [playlistId]: tracks }));
+      const { tracks, error } = await getPlaylistTracks(t, playlistId);
       setLoadingPlaylistId(null);
+      if (error) {
+        setPlaylistErrors((prev) => ({ ...prev, [playlistId]: error }));
+      } else {
+        setPlaylistTracks((prev) => ({ ...prev, [playlistId]: tracks }));
+        setPlaylistErrors((prev) => { const n = { ...prev }; delete n[playlistId]; return n; });
+      }
     },
     [openPlaylistId, playlistTracks]
   );
@@ -459,6 +490,7 @@ export default function Home() {
     setToken(null);
     setPlayerState(null);
     setPlaylists([]);
+    setPlaylistsLoaded(false);
     setOpenPlaylistId(null);
     setPlaylistTracks({});
     setLikedTracks(null);
@@ -688,6 +720,7 @@ export default function Home() {
           {/* ── Your Snippets ── */}
           {Object.keys(allTimestamps).length > 0 && (() => {
             const trackLookup = {};
+            Object.values(snippetTrackMeta).forEach((t) => { trackLookup[t.id] = t; });
             (likedTracks || []).forEach((t) => { trackLookup[t.id] = t; });
             Object.values(playlistTracks).flat().forEach((t) => { trackLookup[t.id] = t; });
             if (playerState) trackLookup[playerState.id] = { id: playerState.id, name: playerState.name, uri: playerState.uri, artists: playerState.artists, albumArt: playerState.albumArt, durationMs: playerState.durationMs };
@@ -852,8 +885,10 @@ export default function Home() {
               </div>
 
               {/* Playlists */}
-              {playlists.length === 0 ? (
+              {!playlistsLoaded ? (
                 <p style={{ ...s.muted, padding: "0.5rem 0.25rem" }}>Loading playlists…</p>
+              ) : playlists.length === 0 ? (
+                <p style={{ ...s.muted, padding: "0.5rem 0.25rem" }}>No playlists found.</p>
               ) : (
                 playlists
                 .filter((pl) => !searchQuery || pl.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -879,7 +914,7 @@ export default function Home() {
                         )}
                         <div style={s.playlistMeta}>
                           <span style={s.playlistName}>{pl.name}</span>
-                          <span style={s.playlistCount}>{pl.trackCount} tracks</span>
+                          <span style={s.playlistCount}>{pl.trackCount > 0 ? `${pl.trackCount} tracks` : playlistTracks[pl.id] ? `${playlistTracks[pl.id].length} tracks` : "·"}</span>
                         </div>
                         <span style={{ ...s.chevron, marginLeft: "auto" }}>
                           {isOpen ? "▲" : "▼"}
@@ -890,6 +925,11 @@ export default function Home() {
                         <div style={s.trackList}>
                           {loading ? (
                             <p style={{ ...s.muted, padding: "0.75rem" }}>Loading…</p>
+                          ) : playlistErrors[pl.id] ? (
+                            <p style={{ ...s.muted, padding: "0.75rem", color: "#ff8a8a", fontSize: "0.75rem", wordBreak: "break-all" }}>
+                              Error: {playlistErrors[pl.id]}{"\n"}
+                              Scopes granted: {typeof window !== "undefined" ? (localStorage.getItem("spotify_granted_scopes") || "unknown") : "unknown"}
+                            </p>
                           ) : tracks.length === 0 ? (
                             <p style={{ ...s.muted, padding: "0.75rem" }}>{searchQuery ? "No matches." : "No tracks found."}</p>
                           ) : (
