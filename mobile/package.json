@@ -1,0 +1,20 @@
+{
+  "name": "snippet-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "ios": "cap run ios",
+    "sync": "cap sync ios",
+    "open": "cap open ios"
+  },
+  "dependencies": {
+    "@capacitor/app": "^6.0.0",
+    "@capacitor/browser": "^6.0.0",
+    "@capacitor/core": "^6.0.0",
+    "@capacitor/ios": "^6.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
+    "typescript": "^6.0.3"
+  }
+}

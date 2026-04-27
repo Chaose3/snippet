@@ -75,6 +75,7 @@ export default function Home() {
   const [openPlaylistId, setOpenPlaylistId] = useState(null);
   const [playlistTracks, setPlaylistTracks] = useState({}); // playlistId → track[]
   const [loadingPlaylistId, setLoadingPlaylistId] = useState(null);
+  const [playlistErrors, setPlaylistErrors] = useState({});
 
   // Liked Songs
   const [likedOpen, setLikedOpen] = useState(false);
@@ -303,7 +304,7 @@ export default function Home() {
     }
     playlists.forEach((pl) => {
       if (!playlistTracks[pl.id]) {
-        getPlaylistTracks(t, pl.id).then((tracks) => {
+        getPlaylistTracks(t, pl.id).then(({ tracks }) => {
           setPlaylistTracks((prev) => ({ ...prev, [pl.id]: tracks }));
         });
       }
@@ -330,8 +331,11 @@ export default function Home() {
       const t = getStoredToken();
       if (!t) return;
       setLoadingPlaylistId(playlistId);
-      const tracks = await getPlaylistTracks(t, playlistId);
+      const { tracks, forbidden } = await getPlaylistTracks(t, playlistId);
       setPlaylistTracks((prev) => ({ ...prev, [playlistId]: tracks }));
+      if (forbidden) {
+        setPlaylistErrors((prev) => ({ ...prev, [playlistId]: "This playlist can't be accessed. It may be private or managed by Spotify." }));
+      }
       setLoadingPlaylistId(null);
     },
     [openPlaylistId, playlistTracks]
@@ -749,7 +753,9 @@ export default function Home() {
                           <span style={s.snippetTrackArtist}>{track?.artists ?? trackId}</span>
                         </div>
                         {track && (
-                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">▶</button>
+                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                          </button>
                         )}
                       </div>
                       <div style={s.snippetList}>
@@ -874,7 +880,7 @@ export default function Home() {
                                 onClick={() => jump(track.uri, 0)}
                                 title="Play from start"
                               >
-                                ▶
+                                <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                               </button>
                             </div>
                           </div>
@@ -924,6 +930,8 @@ export default function Home() {
                         <div style={s.trackList}>
                           {loading ? (
                             <p style={{ ...s.muted, padding: "0.75rem" }}>Loading…</p>
+                          ) : playlistErrors[pl.id] ? (
+                            <p style={{ ...s.muted, padding: "0.75rem" }}>{playlistErrors[pl.id]}</p>
                           ) : tracks.length === 0 ? (
                             <p style={{ ...s.muted, padding: "0.75rem" }}>{searchQuery ? "No matches." : "No tracks found."}</p>
                           ) : (
@@ -963,7 +971,7 @@ export default function Home() {
                                       onClick={() => jump(track.uri, 0)}
                                       title="Play from start"
                                     >
-                                      ▶
+                                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
                                     </button>
                                   </div>
                                 </div>
@@ -1027,7 +1035,9 @@ export default function Home() {
                         </div>
                         <div style={s.trackRight}>
                           <span style={s.trackDuration}>{formatMs(track.durationMs)}</span>
-                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">▶</button>
+                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">
+                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
+                          </button>
                         </div>
                       </div>
                     );
@@ -1063,14 +1073,11 @@ export default function Home() {
         return (
           <div style={s.modalOverlay} onClick={() => setSelectedTrack(null)}>
             <div style={s.modalSheet} onClick={e => e.stopPropagation()}>
-              {/* drag handle */}
-              <div style={s.modalHandle} />
-
               {/* header */}
               <div style={s.modalHeader}>
                 <button style={s.modalClose} onClick={() => setSelectedTrack(null)}>✕</button>
                 <span style={s.modalTitle}>{selectedTrack.name}</span>
-                <div style={{ width: 28 }} />
+                <div style={{ width: 36 }} />
               </div>
 
               {/* album art */}
@@ -1088,7 +1095,7 @@ export default function Home() {
                 <p style={s.modalArtist}>{selectedTrack.artists}</p>
               </div>
 
-              {/* controls — only if this is the currently playing track */}
+              {/* seek bar — only if this is the currently playing track */}
               {isCurrentTrack && (
                 <div style={s.modalControls}>
                   <input
@@ -1099,32 +1106,54 @@ export default function Home() {
                     onChange={handleSeekChange}
                     onMouseUp={handleSeekCommit}
                     onTouchEnd={handleSeekCommit}
-                    /*Playback progress bar*/
                     style={{...s.modalSeek, background: `linear-gradient(to right, transparent 0%, transparent ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a 100%), ${GRAD}`}}
                   />
                   <div style={s.modalTimes}>
                     <span>{formatMs(estimatedPos)}</span>
                     <span>{formatMs(playerState.durationMs)}</span>
                   </div>
-                  <div style={s.modalBtnRow}>
-                    <button style={s.modalPlayPause} onClick={handlePlayPause}>
-                      {playerState.isPlaying
-                        ? <span style={{ letterSpacing: "2px", fontSize: "1.3rem" }}>❙❙</span>
-                        : <span style={{ fontSize: "1.3rem" }}>▶</span>}
-                    </button>
-                  </div>
                 </div>
               )}
 
-              {/* play from start if not current track */}
-              {!isCurrentTrack && (
-                <div style={s.modalBtnRow}>
+              {/* pulsing play button */}
+              <div style={s.modalBtnRow}>
+                {isCurrentTrack ? (
                   <button
-                    style={s.modalPlayFromStart}
+                    className={playerState.isPlaying ? undefined : "play-pulse"}
+                    style={s.modalPlayPause}
+                    onClick={handlePlayPause}
+                  >
+                    {playerState.isPlaying
+                      ? <span style={{ letterSpacing: "3px", fontSize: "1.5rem" }}>❙❙</span>
+                      : <svg viewBox="0 0 512 512" width="30" height="30" fill="currentColor" style={{ marginLeft: 5 }}>
+                          <path d="M424.4 214.7L72.4 6.6C43.8-10.3 0 6.1 0 47.9V464c0 37.5 40.7 60.1 72.4 41.3l352-208c31.4-18.5 31.5-64.1 0-82.6z" />
+                        </svg>
+                    }
+                  </button>
+                ) : (
+                  <button
+                    className="play-pulse"
+                    style={s.modalPlayPause}
                     onClick={() => { jump(selectedTrack.uri, 0); }}
                   >
-                    ▶ Play
+                    <svg viewBox="0 0 512 512" width="30" height="30" fill="currentColor" style={{ marginLeft: 5 }}>
+                      <path d="M424.4 214.7L72.4 6.6C43.8-10.3 0 6.1 0 47.9V464c0 37.5 40.7 60.1 72.4 41.3l352-208c31.4-18.5 31.5-64.1 0-82.6z" />
+                    </svg>
                   </button>
+                )}
+              </div>
+
+              {/* save moment — only if currently playing */}
+              {isCurrentTrack && (
+                <div style={s.modalSaveRow}>
+                  <input
+                    style={s.input}
+                    placeholder={`Label (optional) — at ${formatMs(estimatedPos)}`}
+                    value={labelInput}
+                    onChange={(e) => setLabelInput(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && handleSaveTimestamp()}
+                  />
+                  <button style={s.btnPrimary} onClick={handleSaveTimestamp}>Save</button>
                 </div>
               )}
 
@@ -1436,10 +1465,13 @@ const s = {
   trackRight: { display: "flex", alignItems: "center", gap: "0.6rem", flexShrink: 0 },
   trackDuration: { fontSize: "0.73rem", color: "#3a3a58" },
   playTrackBtn: {
-    background: "none", border: "none", color: "#5a5a78",
-    cursor: "pointer", fontSize: "0.78rem", padding: "0.3rem",
-    borderRadius: 6, lineHeight: 1,
-    transition: "color 0.15s",
+    width: 32, height: 32, borderRadius: "50%",
+    background: "linear-gradient(30deg, rgb(255, 130, 0) 20%, rgb(255, 38, 0) 80%)",
+    border: "none", color: "#fff",
+    cursor: "pointer",
+    display: "flex", alignItems: "center", justifyContent: "center",
+    flexShrink: 0, lineHeight: 1,
+    transition: "transform 0.15s",
   },
 
   // ── Buttons ──
@@ -1639,48 +1671,45 @@ const s = {
   // ── Track Detail Modal ──
   modalOverlay: {
     position: "fixed", inset: 0,
-    background: "rgba(0,0,0,0.75)",
-    backdropFilter: "blur(6px)",
+    background: "rgba(0,0,0,0.92)",
+    backdropFilter: "blur(12px)",
     zIndex: 100,
-    display: "flex", alignItems: "flex-end", justifyContent: "center",
+    display: "flex", alignItems: "stretch", justifyContent: "center",
+    overflowY: "auto",
   },
   modalSheet: {
-    width: "100%", maxWidth: 480,
-    background: "#0f0f1a",
-    borderRadius: "24px 24px 0 0",
-    border: "1px solid rgba(255,255,255,0.08)",
-    borderBottom: "none",
-    maxHeight: "92vh",
-    overflowY: "auto",
-    padding: "0 1.5rem 3rem",
-  },
-  modalHandle: {
-    width: 40, height: 4, borderRadius: 2,
-    background: "rgba(255,255,255,0.15)",
-    margin: "12px auto 0",
+    width: "100%", maxWidth: 600,
+    background: "#0a0a10",
+    minHeight: "100%",
+    padding: "0 1.5rem 6rem",
+    display: "flex", flexDirection: "column",
   },
   modalHeader: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
-    padding: "1rem 0 0.5rem",
+    padding: "1.25rem 0 0.5rem",
+    position: "sticky", top: 0,
+    background: "#0a0a10",
+    zIndex: 1,
   },
   modalClose: {
-    background: "rgba(255,255,255,0.07)", border: "none",
-    color: "#8888aa", cursor: "pointer",
-    width: 28, height: 28, borderRadius: "50%",
+    background: "rgba(255,255,255,0.08)", border: "none",
+    color: "#c0c0d8", cursor: "pointer",
+    width: 36, height: 36, borderRadius: "50%",
     display: "flex", alignItems: "center", justifyContent: "center",
-    fontSize: "0.75rem", flexShrink: 0,
+    fontSize: "0.88rem", flexShrink: 0,
   },
   modalTitle: {
-    fontSize: "0.85rem", fontWeight: 600, color: "#8888aa",
+    fontSize: "0.88rem", fontWeight: 600, color: "#8888aa",
     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-    textAlign: "center", flex: 1, padding: "0 0.5rem",
+    textAlign: "center", flex: 1, padding: "0 0.75rem",
   },
   modalArtWrap: {
-    margin: "1.25rem auto",
-    width: "78%", aspectRatio: "1",
-    borderRadius: 16,
+    margin: "1.5rem auto",
+    width: "72%", aspectRatio: "1",
+    borderRadius: 20,
     overflow: "hidden",
-    boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+    boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
+    flexShrink: 0,
   },
   modalArt: {
     width: "100%", height: "100%", objectFit: "cover", display: "block",
@@ -1690,18 +1719,18 @@ const s = {
     background: "linear-gradient(135deg, #1e1e2e, #2a1a3a)",
   },
   modalTrackInfo: {
-    textAlign: "center", marginBottom: "1.25rem",
+    textAlign: "center", marginBottom: "1.5rem",
   },
   modalTrackName: {
-    margin: "0 0 0.25rem", fontSize: "1.3rem", fontWeight: 800,
-    letterSpacing: "-0.025em",
+    margin: "0 0 0.3rem", fontSize: "1.4rem", fontWeight: 800,
+    letterSpacing: "-0.03em",
     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
   },
   modalArtist: {
-    margin: 0, color: "#6b6b88", fontSize: "0.9rem",
+    margin: 0, color: "#6b6b88", fontSize: "0.92rem",
   },
   modalControls: {
-    marginBottom: "1.25rem",
+    marginBottom: "0.75rem",
   },
   modalSeek: {
     width: "100%", cursor: "pointer", display: "block",
@@ -1709,23 +1738,21 @@ const s = {
   },
   modalTimes: {
     display: "flex", justifyContent: "space-between",
-    fontSize: "0.72rem", color: "#5a5a78", marginBottom: "1.25rem",
+    fontSize: "0.72rem", color: "#5a5a78", marginBottom: "0.5rem",
   },
   modalBtnRow: {
-    display: "flex", justifyContent: "center", marginBottom: "1.5rem",
+    display: "flex", justifyContent: "center", marginBottom: "1.75rem",
   },
   modalPlayPause: {
-    width: 64, height: 64, borderRadius: "50%",
-    background: GRAD, border: "none",
+    width: 80, height: 80, borderRadius: "50%",
+    background: "linear-gradient(30deg, rgb(255, 130, 0) 20%, rgb(255, 38, 0) 80%)",
+    border: "none",
     color: "#fff", cursor: "pointer",
     display: "flex", alignItems: "center", justifyContent: "center",
-    transition: "transform 0.15s",
+    boxShadow: "0 0 0 0 rgba(255, 100, 0, 0.7)",
   },
-  modalPlayFromStart: {
-    padding: "0.65rem 2rem", borderRadius: 50,
-    background: GRAD, border: "none",
-    color: "#fff", fontWeight: 700, fontSize: "0.95rem",
-    cursor: "pointer",
+  modalSaveRow: {
+    display: "flex", gap: "0.5rem", marginBottom: "1.75rem",
   },
   modalTimestamps: {
     borderTop: "1px solid rgba(255,255,255,0.06)",

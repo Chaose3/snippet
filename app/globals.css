@@ -58,3 +58,17 @@ input[type="range"]::-moz-range-thumb {
 ::selection {
   background: rgba(255, 85, 0, 0.35);
 }
+
+/* Pulsing play button */
+.play-pulse {
+  animation: 1.2s cubic-bezier(0.8, 0, 0, 1) 0s infinite normal none running playPulse;
+  transition: transform 0.3s ease-in-out;
+}
+.play-pulse:is(:hover, :focus) {
+  transform: scale(1.2);
+}
+@keyframes playPulse {
+  100% {
+    box-shadow: 0 0 0 45px rgba(193, 244, 246, 0);
+  }
+}
