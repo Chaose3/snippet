@@ -630,7 +630,12 @@ export default function Home() {
                   <img src={playerState.albumArt} alt="Album art" style={s.albumArt} />
                 )}
                 <div style={s.trackInfo}>
-                  <p style={s.trackName}>{playerState.name}</p>
+                  <div style={s.trackNameRow}>
+                    <p style={s.trackName}>{playerState.name}</p>
+                    <button style={s.saveIconBtn} onClick={handleSaveTimestamp} title={`Save moment at ${formatMs(estimatedPos)}`}>
+                      <img src="/Snippet-S.png" alt="Save moment" width="50" height="50" style={{ display: "block", objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+                    </button>
+                  </div>
                   <p style={s.artist}>{playerState.artists}</p>
                   <input
                     type="range"
@@ -679,18 +684,6 @@ export default function Home() {
                 </div>
               </div>
 
-              <div style={s.saveRow}>
-                <input
-                  style={s.input}
-                  placeholder={`Label (optional) — at ${formatMs(estimatedPos)}`}
-                  value={labelInput}
-                  onChange={(e) => setLabelInput(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && handleSaveTimestamp()}
-                />
-                <button style={s.btnPrimary} onClick={handleSaveTimestamp}>
-                  Save moment
-                </button>
-              </div>
 
               {nowPlayingTimestamps.length > 0 ? (
                 <ul style={s.list}>
@@ -1300,10 +1293,20 @@ const s = {
     boxShadow: "0 4px 20px rgba(0,0,0,0.5)",
   },
   trackInfo: { flex: 1, minWidth: 0, display: "flex", flexDirection: "column", justifyContent: "center" },
+  trackNameRow: {
+    display: "flex", alignItems: "center", justifyContent: "space-between",
+    gap: "0.5rem", marginBottom: "0.2rem",
+  },
   trackName: {
-    margin: "0 0 0.2rem", fontWeight: 700, fontSize: "1rem",
+    margin: 0, fontWeight: 700, fontSize: "1rem",
     overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
-    letterSpacing: "-0.01em",
+    letterSpacing: "-0.01em", flex: 1, minWidth: 0,
+  },
+  saveIconBtn: {
+    background: "#7b31c7", border: "none", borderRadius: 8,
+    width: 30, height: 30, display: "flex", alignItems: "center",
+    justifyContent: "center", cursor: "pointer",
+    flexShrink: 0, transition: "transform 0.15s, opacity 0.15s",
   },
   artist: { margin: "0 0 0.3rem", color: "#8888aa", fontSize: "0.82rem" },
   deviceBadge: {
