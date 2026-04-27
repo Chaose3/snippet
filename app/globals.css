@@ -239,3 +239,281 @@ input[type="range"]::-moz-range-thumb {
     transform: translate(-5px, 5px);
   }
 }
+
+.snippet-radio-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.snippet-option {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  cursor: pointer;
+  user-select: none;
+  min-width: 0;
+  padding: 0.15rem 0;
+}
+
+.snippet-radio-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.snippet-selector {
+  position: relative;
+  width: 1.35rem;
+  height: 1.35rem;
+  border: 2px solid #E0AAFF;
+  border-radius: 50%;
+  flex-shrink: 0;
+  transition: all 0.3s ease;
+  box-shadow:
+    inset 0 0 0.8rem rgba(224, 170, 255, 0.14),
+    0 0 1rem rgba(157, 78, 221, 0.16);
+  background: rgba(6, 4, 10, 0.7);
+}
+
+.snippet-selector::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  width: 0.65rem;
+  height: 0.65rem;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #E0AAFF, #9D4EDD);
+  box-shadow: 0 0 1rem rgba(224, 170, 255, 0.6);
+  transition: transform 0.3s cubic-bezier(0.68, -0.6, 0.32, 1.6);
+  opacity: 0;
+}
+
+.snippet-glow {
+  position: absolute;
+  top: -0.25rem;
+  left: -0.25rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(224, 170, 255, 0.22), transparent 70%);
+  filter: blur(0.4rem);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: -1;
+}
+
+.snippet-label {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.08rem;
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: #f3eef8;
+  letter-spacing: 0.01em;
+  transition: color 0.3s ease;
+}
+
+.snippet-meta {
+  font-size: 0.66rem;
+  color: #8e7fa1;
+  font-weight: 500;
+}
+
+.snippet-connector {
+  height: 1px;
+  width: 0;
+  background: linear-gradient(90deg, rgba(224, 170, 255, 0.7), transparent);
+  transition: width 0.3s ease;
+  flex-shrink: 0;
+}
+
+.snippet-option:hover .snippet-selector {
+  transform: scale(1.08);
+  box-shadow:
+    inset 0 0 1rem rgba(224, 170, 255, 0.18),
+    0 0 1.2rem rgba(224, 170, 255, 0.22);
+}
+
+.snippet-option:hover .snippet-label {
+  color: #E0AAFF;
+}
+
+.snippet-option:hover .snippet-glow {
+  opacity: 0.42;
+}
+
+.snippet-option-dormant {
+  opacity: 0.48;
+}
+
+.snippet-option-dormant .snippet-selector {
+  border-color: rgba(224, 170, 255, 0.3);
+  box-shadow:
+    inset 0 0 0.5rem rgba(224, 170, 255, 0.08),
+    0 0 0.5rem rgba(157, 78, 221, 0.08);
+}
+
+.snippet-option-dormant .snippet-label {
+  color: rgba(243, 238, 248, 0.72);
+}
+
+.snippet-option-dormant .snippet-meta {
+  color: rgba(142, 127, 161, 0.78);
+}
+
+.snippet-option-dormant .snippet-connector,
+.snippet-option-dormant .snippet-glow {
+  opacity: 0.08;
+}
+
+.snippet-radio-input:checked + .snippet-selector::before {
+  transform: translate(-50%, -50%) scale(1);
+  opacity: 1;
+}
+
+.snippet-radio-input:checked + .snippet-selector {
+  animation: snippetPulse 2s infinite;
+}
+
+.snippet-radio-input:checked ~ .snippet-label {
+  color: #E0AAFF;
+}
+
+.snippet-radio-input:checked ~ .snippet-glow {
+  opacity: 0.7;
+}
+
+.snippet-radio-input:checked ~ .snippet-connector {
+  width: 1.4rem;
+}
+
+@keyframes snippetPulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 0 1rem rgba(224, 170, 255, 0.22),
+      0 0 1.1rem rgba(157, 78, 221, 0.24);
+  }
+  50% {
+    box-shadow:
+      inset 0 0 1.1rem rgba(224, 170, 255, 0.28),
+      0 0 1.5rem rgba(224, 170, 255, 0.34);
+  }
+}
+
+.checkbox-wrapper * {
+  -webkit-tap-highlight-color: transparent;
+  outline: none;
+}
+
+.checkbox-wrapper input[type="checkbox"] {
+  display: none;
+}
+
+.checkbox-wrapper label {
+  --size: 42px;
+  --shadow: calc(var(--size) * 0.07) calc(var(--size) * 0.1);
+  position: relative;
+  display: block;
+  width: var(--size);
+  height: var(--size);
+  margin: 0 auto;
+  background: linear-gradient(145deg, #141019 0%, #0c0811 100%);
+  border: 1px solid rgba(224, 170, 255, 0.08);
+  border-radius: 50%;
+  box-shadow: 0 var(--shadow) rgba(0, 0, 0, 0.26);
+  cursor: pointer;
+  transition: 0.2s ease transform, 0.2s ease background, 0.2s ease box-shadow;
+  overflow: hidden;
+  z-index: 1;
+}
+
+.checkbox-wrapper label:before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 0;
+  left: 0;
+  width: calc(var(--size) * 0.7);
+  height: calc(var(--size) * 0.7);
+  margin: 0 auto;
+  background: linear-gradient(145deg, #f8f4fb 0%, #dbc8e7 100%);
+  transform: translateY(-50%);
+  border-radius: 50%;
+  box-shadow: inset 0 var(--shadow) rgba(60, 9, 108, 0.18);
+  transition: 0.2s ease width, 0.2s ease height, 0.2s ease box-shadow;
+}
+
+.checkbox-wrapper label:hover:before {
+  width: calc(var(--size) * 0.55);
+  height: calc(var(--size) * 0.55);
+  box-shadow: inset 0 var(--shadow) rgba(90, 24, 154, 0.2);
+}
+
+.checkbox-wrapper label:active {
+  transform: scale(0.92);
+}
+
+.checkbox-wrapper .tick_mark {
+  position: absolute;
+  top: -1px;
+  right: 0;
+  left: calc(var(--size) * -0.05);
+  width: calc(var(--size) * 0.6);
+  height: calc(var(--size) * 0.6);
+  margin: 0 auto;
+  margin-left: calc(var(--size) * 0.14);
+  transform: rotateZ(-40deg);
+}
+
+.checkbox-wrapper .tick_mark:before,
+.checkbox-wrapper .tick_mark:after {
+  content: "";
+  position: absolute;
+  background-color: #f6eeff;
+  border-radius: 2px;
+  opacity: 0;
+  transition: 0.2s ease transform, 0.2s ease opacity;
+}
+
+.checkbox-wrapper .tick_mark:before {
+  left: 0;
+  bottom: 0;
+  width: calc(var(--size) * 0.1);
+  height: calc(var(--size) * 0.3);
+  box-shadow: -2px 0 5px rgba(0, 0, 0, 0.23);
+  transform: translateY(calc(var(--size) * -0.68));
+}
+
+.checkbox-wrapper .tick_mark:after {
+  left: 0;
+  bottom: 0;
+  width: 100%;
+  height: calc(var(--size) * 0.1);
+  box-shadow: 0 3px 5px rgba(0, 0, 0, 0.23);
+  transform: translateX(calc(var(--size) * 0.78));
+}
+
+.checkbox-wrapper input[type="checkbox"]:checked + label {
+  background: linear-gradient(145deg, #3c096c 0%, #240046 100%);
+  box-shadow:
+    0 14px 26px rgba(0, 0, 0, 0.32),
+    0 0 18px rgba(224, 170, 255, 0.18);
+}
+
+.checkbox-wrapper input[type="checkbox"]:checked + label:before {
+  width: 0;
+  height: 0;
+}
+
+.checkbox-wrapper input[type="checkbox"]:checked + label .tick_mark:before,
+.checkbox-wrapper input[type="checkbox"]:checked + label .tick_mark:after {
+  transform: translate(0);
+  opacity: 1;
+}

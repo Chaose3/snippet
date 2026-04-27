@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { redis } from "../../../lib/db";
 
+const MAX_SNIPPETS_PER_TRACK = 3;
+
 async function resolveUserId(authHeader) {
   const token = authHeader?.replace("Bearer ", "");
   if (!token) return null;
@@ -16,7 +18,7 @@ function redisKey(userId) {
   return `ts:${userId}`;
 }
 
-// GET /api/timestamps — returns { [trackId]: [{positionMs, label}] }
+// GET /api/timestamps — returns { [trackId]: [{positionMs, label, createdAt?}] }
 export async function GET(request) {
   const userId = await resolveUserId(request.headers.get("Authorization"));
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -46,7 +48,17 @@ export async function POST(request) {
     ? (typeof existing === "string" ? JSON.parse(existing) : existing)
     : [];
 
-  timestamps.push({ positionMs, label: label || null });
+  if (timestamps.length >= MAX_SNIPPETS_PER_TRACK) {
+    return NextResponse.json(
+      {
+        error: "MAX_SNIPPETS_REACHED",
+        detail: `You can save up to ${MAX_SNIPPETS_PER_TRACK} snippets per song.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  timestamps.push({ positionMs, label: label || null, createdAt: new Date().toISOString() });
   timestamps.sort((a, b) => a.positionMs - b.positionMs);
 
   await redis.hset(redisKey(userId), { [trackId]: JSON.stringify(timestamps) });
