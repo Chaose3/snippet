@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   playSnippet,
   getPlayerState,
   getUserPlaylists,
   getPlaylistTracks,
   getLikedTracks,
+  getRecentlyPlayed,
   setShuffle,
   setRepeatMode,
   skipToNext,
@@ -61,6 +62,71 @@ function getNativeSpotifyBridge() {
   return capacitor?.Plugins?.SpotifyBridge ?? null;
 }
 
+function polarToCartesian(cx, cy, r, angleDeg) {
+  const angleRad = ((angleDeg - 90) * Math.PI) / 180;
+  return {
+    x: cx + r * Math.cos(angleRad),
+    y: cy + r * Math.sin(angleRad),
+  };
+}
+
+function describeArcPath(cx, cy, r, startAngleDeg, endAngleDeg) {
+  const start = polarToCartesian(cx, cy, r, startAngleDeg);
+  const end = polarToCartesian(cx, cy, r, endAngleDeg);
+  const angleDiff = ((endAngleDeg - startAngleDeg) % 360 + 360) % 360;
+  const largeArcFlag = angleDiff > 180 ? 1 : 0;
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArcFlag} 1 ${end.x} ${end.y}`;
+}
+
+function trackFromPlayerSnapshot(state) {
+  if (!state?.id || !state?.uri) return null;
+  return {
+    id: state.id,
+    name: state.name,
+    uri: state.uri,
+    artists: state.artists,
+    albumArt: state.albumArt,
+    durationMs: state.durationMs,
+  };
+}
+
+function ThemedLoader({ size = 1, label = null, inline = false }) {
+  const clipId = useId().replace(/:/g, "");
+  return (
+    <div
+      style={{
+        display: "flex",
+        flexDirection: inline ? "row" : "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: inline ? "0.65rem" : "0.9rem",
+      }}
+      role="status"
+      aria-live="polite"
+    >
+      <div className="snippet-loader" style={{ "--size": size }}>
+        <div className="box" style={{ mask: `url(#${clipId})`, WebkitMask: `url(#${clipId})` }} />
+        <svg width="0" height="0" aria-hidden="true">
+          <defs>
+            <mask id={clipId}>
+              <g className="snippet-loader-clipping">
+                <polygon points="50,10 62,38 90,50 62,62 50,90 38,62 10,50 38,38" fill="white" />
+                <polygon points="50,2 66,34 98,50 66,66 50,98 34,66 2,50 34,34" fill="white" />
+                <polygon points="50,8 60,30 84,40 66,58 58,82 40,68 16,60 30,38" fill="white" />
+                <polygon points="50,18 72,34 82,56 62,74 42,78 24,58 28,34" fill="white" />
+                <polygon points="50,12 70,24 78,48 70,74 44,86 24,70 20,42" fill="white" />
+                <polygon points="50,16 64,28 72,48 64,70 44,80 28,64 24,40" fill="white" />
+                <polygon points="50,22 60,34 66,50 60,68 44,74 34,62 30,44" fill="white" />
+              </g>
+            </mask>
+          </defs>
+        </svg>
+      </div>
+      {label ? <span style={{ color: "#a99bb9", fontSize: "0.8rem" }}>{label}</span> : null}
+    </div>
+  );
+}
+
 export default function Home() {
   const [token, setToken] = useState(null);
   const [hydrated, setHydrated] = useState(false);
@@ -103,6 +169,7 @@ export default function Home() {
   // Liked Songs
   const [likedOpen, setLikedOpen] = useState(false);
   const [likedTracks, setLikedTracks] = useState(null); // null = not yet loaded
+  const [recentlyPlayedTracks, setRecentlyPlayedTracks] = useState([]);
 
   // Track detail modal
   const [selectedTrack, setSelectedTrack] = useState(null);
@@ -115,7 +182,8 @@ export default function Home() {
   const [openSnippetTracks, setOpenSnippetTracks] = useState({});
   const [snippetModeEnabled, setSnippetModeEnabled] = useState(false);
   const [snippetsOpen, setSnippetsOpen] = useState(true);
-  const [playlistsOpen, setPlaylistsOpen] = useState(true);
+  const [playlistsOpen, setPlaylistsOpen] = useState(false);
+  const [recentlyPlayedOpen, setRecentlyPlayedOpen] = useState(false);
 
   // Spotify global search
   const [spotifyResults, setSpotifyResults] = useState([]);
@@ -178,14 +246,16 @@ export default function Home() {
 
   const refreshPlayerSnapshot = useCallback(async () => {
     const t = getStoredToken();
-    if (!t) return;
+    if (!t) return { state: null, queue: [] };
     const [state, queue] = await Promise.all([
       withFreshToken((accessToken) => getPlayerState(accessToken)).catch(() => null),
       withFreshToken((accessToken) => getQueue(accessToken)).catch(() => []),
     ]);
     if (state) {
       setPlayerState(state);
-      setEstimatedPos(state.positionMs);
+      if (!isSeekingRef.current) {
+        setEstimatedPos(state.positionMs);
+      }
       lastPollRef.current = {
         time: Date.now(),
         positionMs: state.positionMs,
@@ -193,6 +263,7 @@ export default function Home() {
       };
     }
     setQueueTracks(queue || []);
+    return { state, queue: queue || [] };
   }, [withFreshToken]);
 
   // Proactive refresh: fire 5 minutes before expiry
@@ -317,7 +388,9 @@ export default function Home() {
       const state = await getPlayerState(token);
       if (state) {
         setPlayerState(state);
-        setEstimatedPos(state.positionMs);
+        if (!isSeekingRef.current) {
+          setEstimatedPos(state.positionMs);
+        }
         lastPollRef.current = {
           time: Date.now(),
           positionMs: state.positionMs,
@@ -390,7 +463,7 @@ export default function Home() {
       if (!lastPollRef.current?.isPlaying) return;
       const elapsed = Date.now() - lastPollRef.current.time;
       setEstimatedPos(lastPollRef.current.positionMs + elapsed);
-    }, 500);
+    }, 100);
     return () => clearInterval(id);
   }, []);
 
@@ -420,6 +493,18 @@ export default function Home() {
       })
       .catch((err) => console.warn("[likedTracks] failed to load", err));
   }, [token, likedTracks, withFreshToken]);
+
+  useEffect(() => {
+    if (!token) {
+      setRecentlyPlayedTracks([]);
+      return;
+    }
+    withFreshToken((accessToken) => getRecentlyPlayed(accessToken))
+      .then((tracks) => {
+        if (tracks) setRecentlyPlayedTracks(tracks);
+      })
+      .catch((err) => console.warn("[recentlyPlayed] failed to load", err));
+  }, [token, withFreshToken]);
 
   // Spotify global search — fires when on Search tab, debounced 350ms
   useEffect(() => {
@@ -798,9 +883,31 @@ export default function Home() {
   const handleSkipNext = useCallback(async () => {
     const t = getStoredToken();
     if (!t) return;
+    const previousTrackId = playerState?.id ?? null;
     await skipToNext(t, playbackTargetDevice);
-    setTimeout(() => refreshPlayerSnapshot(), 350);
-  }, [playbackTargetDevice, refreshPlayerSnapshot]);
+    const applyPostSkipBehavior = async () => {
+      let nextState = null;
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const snapshot = await refreshPlayerSnapshot();
+        nextState = snapshot?.state ?? null;
+        if (nextState?.id && nextState.id !== previousTrackId) break;
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      }
+      if (!nextState?.id || !snippetModeEnabled) return;
+      const snippets = allTimestamps[nextState.id] || [];
+      const selectedIndex = Math.min(
+        selectedSnippetIndexByTrack[nextState.id] ?? 0,
+        Math.max(0, snippets.length - 1)
+      );
+      const snippetPositionMs = snippets[selectedIndex]?.positionMs ?? 0;
+      if (snippetPositionMs <= 0) return;
+      const nextTrack = trackFromPlayerSnapshot(nextState);
+      if (!nextTrack) return;
+      await jump(nextTrack, snippetPositionMs, nextTrack);
+      setTimeout(() => refreshPlayerSnapshot(), 250);
+    };
+    void applyPostSkipBehavior();
+  }, [allTimestamps, jump, playbackTargetDevice, playerState?.id, refreshPlayerSnapshot, selectedSnippetIndexByTrack, snippetModeEnabled]);
 
   const handleSkipPrevious = useCallback(async () => {
     const t = getStoredToken();
@@ -808,6 +915,76 @@ export default function Home() {
     await skipToPrevious(t, playbackTargetDevice);
     setTimeout(() => refreshPlayerSnapshot(), 350);
   }, [playbackTargetDevice, refreshPlayerSnapshot]);
+
+  const handleQuickPlayPlaylist = useCallback(async (playlist) => {
+    const t = getStoredToken();
+    if (!t || !playlist?.id) return;
+    const browserDeviceId = await ensureBrowserPlaybackDevice();
+    const targetDevice = browserDeviceId || webPlayerIdRef.current || deviceId || null;
+    if ((browserDeviceId || webPlayerIdRef.current) && sdkPlayerRef.current?.activateElement) {
+      try {
+        await sdkPlayerRef.current.activateElement();
+      } catch (err) {
+        console.warn("[webPlayer.activateElement] failed", err);
+      }
+    }
+    if (browserDeviceId || webPlayerIdRef.current) {
+      try {
+        await transferPlayback(t, browserDeviceId || webPlayerIdRef.current, false);
+      } catch (err) {
+        console.warn("[transferPlayback] failed", err);
+      }
+    }
+
+    await setShuffle(t, true);
+    setPlayerState((prev) => prev ? { ...prev, shuffle: true } : prev);
+
+    const request = {
+      trackUri: `${playlist.uri}:seed`,
+      positionMs: 0,
+      deviceId: targetDevice,
+      contextUri: playlist.uri ?? `spotify:playlist:${playlist.id}`,
+    };
+
+    const res = await playSnippet(t, request);
+    if (res.status === 401) {
+      const newToken = await doRefresh();
+      if (!newToken) return;
+      if (browserDeviceId || webPlayerIdRef.current) {
+        try {
+          await transferPlayback(newToken, browserDeviceId || webPlayerIdRef.current, false);
+        } catch (err) {
+          console.warn("[transferPlayback retry] failed", err);
+        }
+      }
+      await setShuffle(newToken, true);
+      await playSnippet(newToken, { ...request });
+    }
+
+    const applySnippetIfNeeded = async () => {
+      let nextState = null;
+      for (let attempt = 0; attempt < 6; attempt += 1) {
+        const snapshot = await refreshPlayerSnapshot();
+        nextState = snapshot?.state ?? null;
+        if (nextState?.id) break;
+        await new Promise((resolve) => setTimeout(resolve, 220));
+      }
+      if (!nextState?.id || !snippetModeEnabled) return;
+      const snippets = allTimestamps[nextState.id] || [];
+      const selectedIndex = Math.min(
+        selectedSnippetIndexByTrack[nextState.id] ?? 0,
+        Math.max(0, snippets.length - 1)
+      );
+      const snippetPositionMs = snippets[selectedIndex]?.positionMs ?? 0;
+      if (snippetPositionMs <= 0) return;
+      const nextTrack = trackFromPlayerSnapshot(nextState);
+      if (!nextTrack) return;
+      await jump(nextTrack, snippetPositionMs, nextTrack);
+      setTimeout(() => refreshPlayerSnapshot(), 250);
+    };
+
+    void applySnippetIfNeeded();
+  }, [allTimestamps, deviceId, doRefresh, ensureBrowserPlaybackDevice, jump, refreshPlayerSnapshot, selectedSnippetIndexByTrack, snippetModeEnabled]);
 
   const handleSaveTimestamp = useCallback(async () => {
     if (!playerState) return;
@@ -922,6 +1099,7 @@ export default function Home() {
     setOpenPlaylistId(null);
     setPlaylistTracks({});
     setLikedTracks(null);
+    setRecentlyPlayedTracks([]);
     setLikedOpen(false);
 
     lastPollRef.current = null;
@@ -935,7 +1113,13 @@ export default function Home() {
 
   // ── Render ───────────────────────────────────────────────────────────────────
 
-  if (!hydrated) return <main style={s.main}><p style={s.muted}>Loading…</p></main>;
+  if (!hydrated) {
+    return (
+      <main style={{ ...s.main, ...s.centeredLoaderScreen }}>
+        <ThemedLoader size={0.78} label="Loading Snippet" />
+      </main>
+    );
+  }
 
   const nowPlayingTimestamps = playerState
     ? (allTimestamps[playerState.id] || [])
@@ -970,20 +1154,12 @@ export default function Home() {
       ),
     }))
     .sort((a, b) => b.latestCreatedAt - a.latestCreatedAt);
-  const prioritizedPlaylists = [...playlists]
-    .sort((a, b) => (b.trackCount ?? 0) - (a.trackCount ?? 0))
-    .slice(0, 6);
-  const recentTrackPool = [
-    ...(playerState ? [trackLookup[playerState.id]] : []),
-    ...(likedTracks || []).slice(0, 8),
-    ...Object.values(playlistTracks).flat().slice(0, 20),
-  ].filter(Boolean);
-  const seenRecentTracks = new Set();
-  const recentlyPlayedTracks = recentTrackPool.filter((track) => {
-    if (!track?.id || seenRecentTracks.has(track.id)) return false;
-    seenRecentTracks.add(track.id);
-    return true;
-  }).slice(0, 6);
+  const recentPlaylists = [...playlists]
+    .sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  const prioritizedPlaylists = recentPlaylists.slice(0, 6);
+  const remainingPlaylists = recentPlaylists.slice(6);
+  const prioritizedRecentlyPlayed = recentlyPlayedTracks.slice(0, 6);
+  const remainingRecentlyPlayed = recentlyPlayedTracks.slice(6);
   const fallbackUpcomingTracks = (() => {
     const cachedLists = Object.values(playlistTracks);
     for (const tracks of cachedLists) {
@@ -1033,6 +1209,25 @@ export default function Home() {
     };
   })();
 
+  const landingFeatures = [
+    {
+      title: "Skip to the best part",
+      body: "Jump instantly to what matters",
+    },
+    {
+      title: "Build highlight reels",
+      body: "Save your favorite moments",
+    },
+    {
+      title: "Bring your library with you",
+      body: "Your playlists and songs carry over, so listening never restarts from scratch",
+    },
+    {
+      title: "Built for real listening",
+      body: "No more skipping around manually",
+    },
+  ];
+
   return (
     <main style={s.main}>
       <header style={s.header}>
@@ -1043,37 +1238,96 @@ export default function Home() {
             <p style={s.brandSubtitle}>Jump to the best parts</p>
           </div>
         </div>
-        {token && (
+        {token ? (
           <button style={s.headerIconBtn} onClick={() => handleTabPress("search")} aria-label="Open search">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="11" cy="11" r="7.5" />
               <line x1="21" y1="21" x2="16.5" y2="16.5" />
             </svg>
           </button>
+        ) : (
+          <div style={s.headerProfilePlaceholder} aria-hidden="true">
+            <div style={s.headerProfileInner} />
+          </div>
         )}
       </header>
 
       {urlError && <p style={s.error}>Login issue: {urlError}</p>}
 
       {!token ? (
-        <div style={s.empty}>
-          <p style={{
-            ...s.emptyTitle,
-            background: GRAD,
-            WebkitBackgroundClip: "text",
-            WebkitTextFillColor: "transparent",
-            backgroundClip: "text",
-          }}>Jump to the best parts.</p>
-          <p style={s.muted}>
-            Connect Spotify, start any track, and save the moments worth jumping back to.
-          </p>
-          <button style={s.btnPrimaryLg} onClick={goLogin}>Login with Spotify</button>
+        <div style={s.landingWrap}>
+          <section style={{ ...s.landingHero, animationDelay: "0ms" }} className="landingFadeUp">
+            <div style={s.landingHeroGlow} />
+            <p
+              style={{
+                ...s.landingHeadline,
+                background: GRAD,
+                WebkitBackgroundClip: "text",
+                WebkitTextFillColor: "transparent",
+                backgroundClip: "text",
+              }}
+            >
+              Jump to the best parts.
+            </p>
+            <p style={s.landingSubheadline}>
+              Play any song and skip straight to what hits.
+            </p>
+            <button style={s.btnPrimaryLg} onClick={goLogin}>Connect Spotify</button>
+            <p style={s.landingCtaMeta}>Takes 5 seconds • No data stored</p>
+            <p style={s.landingMicroText}>No account needed</p>
+          </section>
+
+          <section style={{ ...s.landingSection, animationDelay: "90ms" }} className="landingFadeUp">
+            <p style={s.landingSectionTitle}>Music, but edited for you.</p>
+            <p style={s.landingSectionBody}>
+              Save and replay the best moments of any song — the drop, the verse, the part that actually hits.
+            </p>
+          </section>
+
+          <section style={{ ...s.landingSection, animationDelay: "140ms" }} className="landingFadeUp">
+            <p style={s.landingSectionTitle}>What Snippet does</p>
+            <div style={s.landingFeatureGrid}>
+              {landingFeatures.map((feature) => (
+                <article key={feature.title} style={s.landingFeatureCard}>
+                  <p style={s.landingFeatureTitle}>{feature.title}</p>
+                  <p style={s.landingFeatureBody}>{feature.body}</p>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section style={{ ...s.landingSection, animationDelay: "190ms" }} className="landingFadeUp">
+            <p style={s.landingSectionTitle}>Built with privacy in mind</p>
+            <p style={s.landingSectionBody}>
+              Snippet does not store your Spotify login or personal data. We use Spotify’s official authentication — nothing is saved on our servers.
+            </p>
+          </section>
+
+          <section style={{ ...s.landingSection, animationDelay: "240ms" }} className="landingFadeUp">
+            <p style={s.landingSectionTitle}>Powered by listeners, not algorithms</p>
+            <p style={s.landingSectionBody}>
+              The best parts are discovered by people, not decided for you.
+            </p>
+          </section>
+
+          <section style={{ ...s.landingSection, ...s.landingFinalCta, animationDelay: "290ms" }} className="landingFadeUp">
+            <p style={s.landingSectionTitle}>Start in seconds</p>
+            <button style={s.btnPrimaryLg} onClick={goLogin}>Connect Spotify</button>
+            <p style={s.landingCtaMeta}>Start in seconds</p>
+          </section>
+
+          <section style={{ ...s.landingDisclaimer, animationDelay: "340ms" }} className="landingFadeUp">
+            <p style={s.landingDisclaimerTitle}>Built by a two-person team</p>
+            <p style={s.landingDisclaimerBody}>
+              We&apos;re a two man army trying to make our dream real. Snippet is still in development, and we&apos;re shaping it in public. If you have feedback, ideas, or something feels off, please let us know.
+            </p>
+          </section>
         </div>
       ) : (
         <>
           {/* ── Home Tab ── */}
           {activeTab === "home" && (<>
-            {!playerState && !isNativeApp && !webPlayerId && devices.length === 0 && (
+            {!playerState && !isNativeApp && !webPlayerId && devices.length === 0 ? (
               <div style={s.devicePicker}>
                 <p style={s.devicePickerHeading}>{browserPlaybackHelp.title}</p>
                 <p style={{ ...s.muted, fontSize: "0.82rem" }}>
@@ -1084,50 +1338,58 @@ export default function Home() {
                     Best next test: open Snippet in full Chrome or Safari on this computer and make sure protected content / DRM playback is allowed.
                   </p>
                 ) : null}
-                <button style={{ ...s.btnGhost, marginTop: "0.9rem" }} onClick={fetchDevices}>Refresh devices</button>
-              )}
-            </div>
-            )
-          ) : (
+                <button style={{ ...s.btnGhost, marginTop: "0.9rem" }} onClick={fetchDevices}>
+                  {loadingDevices ? <ThemedLoader size={0.28} label="Refreshing" inline /> : "Refresh devices"}
+                </button>
+              </div>
+            ) : (
             <div style={s.card}>
               <div style={s.cardGradientBar} />
               <div style={s.cardInner}>
-              <div style={s.nowPlaying}>
-                {playerState.albumArt && (
-                  <img src={playerState.albumArt} alt="Album art" style={s.albumArt} />
-                )}
-                <div style={s.trackInfo}>
-                  <div style={s.trackNameRow}>
-                    <p style={s.trackName}>{playerState.name}</p>
-                    <button style={s.saveIconBtn} onClick={handleSaveTimestamp} title={`Save moment at ${formatMs(estimatedPos)}`}>
-                      <img src="/Snippet-S.png" alt="Save moment" width="50" height="50" style={{ display: "block", objectFit: "contain", filter: "brightness(0) invert(1)" }} />
-                    </button>
-                  </div>
-                  <p style={s.artist}>{playerState.artists}</p>
-                  <input
-                    type="range"
-                    min={0}
-                    max={playerState.durationMs}
-                    value={estimatedPos}
-                    onChange={handleSeekChange}
-                    onMouseUp={handleSeekCommit}
-                    onTouchEnd={handleSeekCommit}
-                    style={{...s.seekSlider, background: `linear-gradient(to right, transparent 0%, transparent ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a 100%), ${GRAD}`}}
-                  />
-                  <div style={s.times}>
-                    <span>{formatMs(estimatedPos)}</span>
-                    <button
-                      style={playerState.shuffle ? s.shuffleOn : s.shuffleOff}
-                      onClick={handleShuffle}
-                      title={playerState.shuffle ? "Shuffle on" : "Shuffle off"}
-                    >
-                      ⇄
-                    </button>
-                    <span>{formatMs(playerState.durationMs)}</span>
+              {playerState ? (
+                <div style={s.nowPlaying}>
+                  {playerState.albumArt && (
+                    <img src={playerState.albumArt} alt="Album art" style={s.albumArt} />
+                  )}
+                  <div style={s.trackInfo}>
+                    <div style={s.trackNameRow}>
+                      <p style={s.trackName}>{playerState.name}</p>
+                      <button style={s.saveIconBtn} onClick={handleSaveTimestamp} title={`Save moment at ${formatMs(estimatedPos)}`}>
+                        <img src="/Snippet-S.png" alt="Save moment" width="19" height="19" style={{ display: "block", objectFit: "contain", filter: "brightness(0) invert(1)" }} />
+                      </button>
+                    </div>
+                    <p style={s.artist}>{playerState.artists}</p>
+                    <input
+                      type="range"
+                      min={0}
+                      max={playerState.durationMs}
+                      value={estimatedPos}
+                      onChange={handleSeekChange}
+                      onMouseUp={handleSeekCommit}
+                      onTouchEnd={handleSeekCommit}
+                      style={{...s.seekSlider, background: `linear-gradient(to right, transparent 0%, transparent ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a ${playerState.durationMs ? (estimatedPos / playerState.durationMs) * 100 : 0}%, #2a2a3a 100%), ${GRAD}`}}
+                    />
+                    <div style={s.times}>
+                      <span>{formatMs(estimatedPos)}</span>
+                      <button
+                        style={playerState.shuffle ? s.shuffleOn : s.shuffleOff}
+                        onClick={handleShuffle}
+                        title={playerState.shuffle ? "Shuffle on" : "Shuffle off"}
+                      >
+                        ⇄
+                      </button>
+                      <span>{formatMs(playerState.durationMs)}</span>
+                    </div>
                   </div>
                 </div>
-              </div>
-            )}
+              ) : (
+                <div style={{ ...s.empty, minHeight: "unset", padding: "1.25rem 0 0.4rem", alignItems: "flex-start" }}>
+                  <p style={{ ...s.emptyTitle, fontSize: "1.05rem" }}>Start playing something in Spotify</p>
+                  <p style={{ ...s.muted, maxWidth: "32rem" }}>
+                    Snippet is connected, but there isn&apos;t an active track yet. Play a song and your now playing controls and save-snippet actions will appear here.
+                  </p>
+                </div>
+              )}
 
             <section style={s.sectionBlock}>
               <button style={s.sectionHeader} onClick={() => setSnippetsOpen((v) => !v)}>
@@ -1138,19 +1400,35 @@ export default function Home() {
                 <div style={s.sectionHeaderRight}>
                   <span style={s.sectionMeta}>{snippetTracks.length}</span>
                   <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{snippetsOpen ? "▲" : "▼"}</span>
-              </div>
+                </div>
+              </button>
 
-
-              {nowPlayingTimestamps.length > 0 ? (
+              {snippetsOpen && (nowPlayingTimestamps.length > 0 ? (
                 <ul style={s.list}>
                   {nowPlayingTimestamps.map((ts, i) => (
                     <li key={i} style={s.listItem}>
-                      <button
-                        style={s.jumpBtn}
-                        onClick={() => jump(playerState.uri, ts.positionMs)}
+                      <label
+                        className={`snippet-option${!snippetModeEnabled ? " snippet-option-dormant" : ""}`}
+                        style={{ flex: 1, padding: 0, background: "transparent", border: 0, boxShadow: "none" }}
                       >
-                        <span style={s.playIcon}>▶</span>
-                        <span style={s.tsLabel}>{ts.label}</span>
+                        <input
+                          type="radio"
+                          name={`home-snippet-${playerState.id}`}
+                          className="snippet-radio-input"
+                          checked={selectedNowPlayingSnippetIndex === i}
+                          onChange={() => handleSelectSnippet(playerState.id, i)}
+                        />
+                        <span className="snippet-label">
+                          {ts.label || `Snippet ${i + 1}`}
+                          <span className="snippet-meta">{formatMs(ts.positionMs)}</span>
+                        </span>
+                      </label>
+                      <button
+                        style={s.homeSnippetPlayBtn}
+                        onClick={() => jump(playerState.uri, ts.positionMs)}
+                        title="Play snippet"
+                      >
+                        ▶
                       </button>
                       <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
                       <button
@@ -1167,319 +1445,140 @@ export default function Home() {
                 <p style={{ ...s.muted, marginTop: "0.5rem", fontSize: "0.82rem" }}>
                   No saved moments for this song yet.
                 </p>
-              )}
+              ))}
+            </section>
               </div>{/* cardInner */}
             </div>
-          )}
+            )}
 
           {/* ── Your Snippets ── */}
-          {Object.keys(allTimestamps).length > 0 && (() => {
-            const trackLookup = {};
-            (likedTracks || []).forEach((t) => { trackLookup[t.id] = t; });
-            Object.values(playlistTracks).flat().forEach((t) => { trackLookup[t.id] = t; });
-            if (playerState) trackLookup[playerState.id] = { id: playerState.id, name: playerState.name, uri: playerState.uri, artists: playerState.artists, albumArt: playerState.albumArt, durationMs: playerState.durationMs };
-
-            const snippetTracks = Object.entries(allTimestamps).map(([trackId, tss]) => ({
-              trackId,
-              track: trackLookup[trackId] ?? null,
-              tss,
-            }));
-
-            return (
-              <div style={s.librarySection}>
-                <p style={s.libraryLabel}>Your Snippets</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {snippetTracks.map(({ trackId, track, tss }) => (
-                    <div key={trackId} style={s.snippetCard}>
-                      <div style={s.snippetCardHeader}>
-                        {track?.albumArt ? (
-                          <img src={track.albumArt} alt="" style={s.snippetArt} />
-                        ) : (
-                          <div style={s.snippetArtFallback} />
-                        )}
-                        <div style={s.snippetTrackMeta}>
-                          <span style={s.snippetTrackName}>{track?.name ?? "Unknown track"}</span>
-                          <span style={s.snippetTrackArtist}>{track?.artists ?? trackId}</span>
-                        </div>
-                        {track && (
-                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">
-                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                          </button>
-                        )}
-                      </div>
-                      <div style={s.snippetList}>
-                        {tss.map((ts, i) => {
-                          const isEditing = editingSnippet?.trackId === trackId && editingSnippet?.index === i;
-                          return (
-                            <div key={i} style={s.snippetRow}>
-                              {isEditing ? (
-                                <>
-                                  <input
-                                    style={s.snippetEditInput}
-                                    value={editLabel}
-                                    onChange={(e) => setEditLabel(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") handleUpdateTimestamp(trackId, i, editLabel);
-                                      if (e.key === "Escape") setEditingSnippet(null);
-                                    }}
-                                    autoFocus
-                                  />
-                                  <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
-                                  <button style={s.snippetSaveBtn} onClick={() => handleUpdateTimestamp(trackId, i, editLabel)}>✓</button>
-                                  <button style={s.deleteBtn} onClick={() => setEditingSnippet(null)}>✕</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    style={s.jumpBtn}
-                                    onClick={() => track && jump(track.uri, ts.positionMs)}
-                                  >
-                                    <span style={s.playIcon}>▶</span>
-                                    <span style={s.tsLabel}>{ts.label || formatMs(ts.positionMs)}</span>
-                                  </button>
-                                  <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
-                                  <button
-                                    style={s.editBtn}
-                                    onClick={() => { setEditingSnippet({ trackId, index: i }); setEditLabel(ts.label || ""); }}
-                                    title="Edit label"
-                                  >✏</button>
-                                  <button style={s.deleteBtn} onClick={() => handleDelete(trackId, i)} title="Remove">✕</button>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </button>
-              {snippetsOpen && (
-                snippetTracks.length === 0 ? (
-                  <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>Save a few snippets and they’ll show up here.</p>
-                ) : (
-                  <div style={s.snippetDropdown}>
-                    {snippetTracks.map(({ trackId, track, tss }) => {
-                      const snippetTrackOpen = Boolean(openSnippetTracks[trackId]);
-                      const selectedSnippetIndex = Math.min(
-                        selectedSnippetIndexByTrack[trackId] ?? 0,
-                        Math.max(0, tss.length - 1)
-                      );
-                      const selectedSnippet = tss[selectedSnippetIndex];
-                      return (
-                        <div key={trackId} style={s.snippetCard}>
-                          <div style={s.snippetCardHeader}>
-                            {track?.albumArt ? (
-                              <img src={track.albumArt} alt="" style={s.snippetArt} />
-                            ) : (
-                              <div style={s.snippetArtFallback} />
-                            )}
-                            <div style={s.snippetTrackMeta}>
-                              <span style={s.snippetTrackName}>{track?.name ?? "Unknown track"}</span>
-                              <span style={s.snippetTrackArtist}>{track?.artists ?? trackId}</span>
-                            </div>
-                            <div style={s.snippetCardActions}>
-                              <button
-                                style={s.snippetExpandBtn}
-                                onClick={() => handleToggleSnippetTrack(trackId)}
-                                title={snippetTrackOpen ? "Hide snippets" : "Show snippets"}
-                                aria-label={snippetTrackOpen ? "Hide snippets" : "Show snippets"}
-                              >
-                                <svg
-                                  viewBox="0 0 24 24"
-                                  width="13"
-                                  height="13"
-                                  fill="none"
-                                  stroke="currentColor"
-                                  strokeWidth="2"
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  style={{
-                                    transform: snippetTrackOpen ? "rotate(180deg)" : "rotate(0deg)",
-                                    transition: "transform 0.18s ease",
-                                  }}
-                                >
-                                  <path d="m6 9 6 6 6-6" />
-                                </svg>
-                              </button>
-                              {track && (
-                                <button
-                                  style={s.playTrackBtn}
-                                  onClick={() => playTrackWithMode(track)}
-                                  title={snippetModeEnabled ? "Play selected snippet" : "Play from start"}
-                                >
-                                  <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                          {snippetTrackOpen && (
-                            <>
-                              <div style={s.snippetList}>
-                                {tss.map((ts, i) => {
-                                  const isEditing = editingSnippet?.trackId === trackId && editingSnippet?.index === i;
-                                  return (
-                                    <div key={i} style={s.snippetRow}>
-                                      {isEditing ? (
-                                        <>
-                                          <input
-                                            style={s.snippetEditInput}
-                                            value={editLabel}
-                                            onChange={(e) => setEditLabel(e.target.value)}
-                                            onKeyDown={(e) => {
-                                              if (e.key === "Enter") handleUpdateTimestamp(trackId, i, editLabel);
-                                              if (e.key === "Escape") setEditingSnippet(null);
-                                            }}
-                                            autoFocus
-                                          />
-                                          <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
-                                          <button style={s.snippetSaveBtn} onClick={() => handleUpdateTimestamp(trackId, i, editLabel)}>✓</button>
-                                          <button style={s.deleteBtn} onClick={() => setEditingSnippet(null)}>✕</button>
-                                        </>
-                                      ) : (
-                                        <>
-                                          <label
-                                            className={`snippet-option${!snippetModeEnabled ? " snippet-option-dormant" : ""}`}
-                                            style={s.snippetToggleRow}
-                                          >
-                                            <input
-                                              type="radio"
-                                              name={`snippet-track-${trackId}`}
-                                              className="snippet-radio-input"
-                                              checked={selectedSnippetIndex === i}
-                                              onChange={() => handleSelectSnippet(trackId, i)}
-                                            />
-                                            <span className="snippet-selector" />
-                                            <span className="snippet-glow" />
-                                            <span className="snippet-label">
-                                              {ts.label || `Snippet ${i + 1}`}
-                                              <span className="snippet-meta">{formatMs(ts.positionMs)}</span>
-                                            </span>
-                                            <span className="snippet-connector" />
-                                          </label>
-                                          <button
-                                            style={s.editBtn}
-                                            onClick={() => { setEditingSnippet({ trackId, index: i }); setEditLabel(ts.label || ""); }}
-                                            title="Edit label"
-                                          >✏</button>
-                                          <button style={s.deleteBtn} onClick={() => handleDelete(trackId, i)} title="Remove">✕</button>
-                                        </>
-                                      )}
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {track && selectedSnippet && (
-                                <div style={s.snippetCardFooter}>
-                                  <button style={{ ...s.btnPrimary, width: "100%" }} onClick={() => jump(track, selectedSnippet.positionMs, track)}>
-                                    Play selected snippet
-                                  </button>
-                                </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )
-              )}
-            </section>
 
             <section style={s.sectionBlock}>
               <button style={s.sectionHeader} onClick={() => setPlaylistsOpen((v) => !v)}>
                 <div>
                   <p style={s.sectionTitle}>Playlists</p>
-                  <p style={s.sectionSubtle}>Your most important playlists first</p>
+                  <p style={s.sectionSubtle}>Most recent playlists first</p>
                 </div>
                 <div style={s.sectionHeaderRight}>
                   <span style={s.sectionMeta}>{playlists.length}</span>
                   <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{playlistsOpen ? "▲" : "▼"}</span>
                 </div>
               </button>
-              {playlistsOpen && (
-                prioritizedPlaylists.length === 0 ? (
-                  <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>Loading playlists…</p>
-                ) : (
-                  <>
-                    <div style={s.playlistGrid}>
-                      {prioritizedPlaylists.map((pl) => (
-                        <button
+              {prioritizedPlaylists.length === 0 ? (
+                <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>
+                  {playlists.length === 0 ? "No playlists found yet." : "Loading playlists…"}
+                </p>
+              ) : (
+                <>
+                  <div style={s.playlistGrid}>
+                    {[...prioritizedPlaylists, ...(playlistsOpen ? remainingPlaylists : [])].map((pl) => {
+                      const loadedTrackCount = playlistTracks[pl.id]?.length;
+                      const displayTrackCount = typeof loadedTrackCount === "number" && loadedTrackCount > 0
+                        ? loadedTrackCount
+                        : pl.trackCount ?? 0;
+                      return (
+                        <div
                           key={pl.id}
                           style={{ ...s.playlistGridCard, ...(openPlaylistId === pl.id ? s.playlistGridCardActive : {}) }}
-                          onClick={() => handleTogglePlaylist(pl.id)}
                         >
-                          {pl.coverArt ? (
-                            <img src={pl.coverArt} alt="" style={s.playlistGridArt} />
-                          ) : (
-                            <div style={s.playlistGridArtFallback} />
-                          )}
-                          <div style={s.playlistGridMeta}>
-                            <span style={s.playlistGridName}>{pl.name}</span>
-                            <span style={s.playlistGridCount}>{pl.trackCount} songs</span>
-                          </div>
-                        </button>
-                      ))}
-                    </div>
-                    {openPlaylistId && (() => {
-                      const currentPlaylist = playlists.find((pl) => pl.id === openPlaylistId);
-                      const tracks = playlistTracks[openPlaylistId] || [];
-                      const loading = loadingPlaylistId === openPlaylistId;
-                      return (
-                        <div style={s.expandedPlaylistPanel}>
-                          <p style={s.expandedPlaylistTitle}>{currentPlaylist?.name ?? "Playlist"}</p>
-                          {loading ? (
-                            <p style={s.muted}>Loading…</p>
-                          ) : playlistErrors[openPlaylistId] ? (
-                            <p style={s.muted}>{playlistErrors[openPlaylistId]}</p>
-                          ) : tracks.length === 0 ? (
-                            <p style={s.muted}>No tracks found.</p>
-                          ) : (
-                            <div style={s.compactTrackList}>
-                              {tracks.slice(0, 8).map((track) => (
-                                <div key={track.id} style={s.compactTrackRow}>
-                                  <div style={s.compactTrackMeta} onClick={() => setSelectedTrack(track)}>
-                                    {track.albumArt ? (
-                                      <img src={track.albumArt} alt="" style={s.compactTrackArt} />
-                                    ) : (
-                                      <div style={s.compactTrackArtFallback} />
-                                    )}
-                                    <div style={{ minWidth: 0 }}>
-                                      <span style={s.compactTrackName}>{track.name}</span>
-                                      <span style={s.compactTrackArtist}>{track.artists}</span>
-                                    </div>
-                                  </div>
-                                  <button
-                                    style={s.playTrackBtn}
-                                    onClick={() => playTrackWithMode(track)}
-                                    title={snippetModeEnabled ? "Play selected snippet" : "Play from start"}
-                                  >
-                                    <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                                  </button>
-                                </div>
-                              ))}
+                          <button
+                            style={s.playlistGridMain}
+                            onClick={() => handleTogglePlaylist(pl.id)}
+                          >
+                            {pl.coverArt ? (
+                              <img src={pl.coverArt} alt="" style={s.playlistGridArt} />
+                            ) : (
+                              <div style={s.playlistGridArtFallback} />
+                            )}
+                            <div style={s.playlistGridMeta}>
+                              <span style={s.playlistGridName}>{pl.name}</span>
                             </div>
-                          )}
+                          </button>
+                          <button
+                            style={s.playlistQuickPlayBtn}
+                            onClick={() => handleQuickPlayPlaylist(pl)}
+                            title="Shuffle play playlist"
+                            aria-label={`Shuffle play ${pl.name}`}
+                          >
+                            <svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor">
+                              <path d="M8 5v14l11-7z" />
+                            </svg>
+                          </button>
                         </div>
                       );
-                    })()}
-                  </>
-                )
+                    })}
+                  </div>
+                  {openPlaylistId && (() => {
+                    const currentPlaylist = playlists.find((pl) => pl.id === openPlaylistId);
+                    const tracks = playlistTracks[openPlaylistId] || [];
+                    const loading = loadingPlaylistId === openPlaylistId;
+                    return (
+                      <div style={s.expandedPlaylistPanel}>
+                        <p style={s.expandedPlaylistTitle}>{currentPlaylist?.name ?? "Playlist"}</p>
+                        {loading ? (
+                          <div style={s.sectionLoader}>
+                            <ThemedLoader size={0.34} label="Loading playlist" inline />
+                          </div>
+                        ) : playlistErrors[openPlaylistId] ? (
+                          <p style={s.muted}>{playlistErrors[openPlaylistId]}</p>
+                        ) : tracks.length === 0 ? (
+                          <p style={s.muted}>No tracks found.</p>
+                        ) : (
+                          <div style={s.compactTrackList}>
+                            {tracks.map((track) => (
+                              <div key={track.id} style={s.compactTrackRow}>
+                                <div style={s.compactTrackMeta} onClick={() => playTrackWithMode(track)}>
+                                  {track.albumArt ? (
+                                    <img src={track.albumArt} alt="" style={s.compactTrackArt} />
+                                  ) : (
+                                    <div style={s.compactTrackArtFallback} />
+                                  )}
+                                  <div style={{ minWidth: 0 }}>
+                                    <span style={s.compactTrackName}>{track.name}</span>
+                                    <span style={s.compactTrackArtist}>{track.artists}</span>
+                                  </div>
+                                </div>
+                                <button
+                                  style={s.trackOptionsBtn}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                  }}
+                                  title="Track options"
+                                  aria-label="Track options"
+                                >
+                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                                    <circle cx="12" cy="5" r="1.8" />
+                                    <circle cx="12" cy="12" r="1.8" />
+                                    <circle cx="12" cy="19" r="1.8" />
+                                  </svg>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </>
               )}
             </section>
 
             <section style={s.sectionBlock}>
-              <div style={s.sectionHeaderStatic}>
+              <button style={s.sectionHeader} onClick={() => setRecentlyPlayedOpen((v) => !v)}>
                 <div>
                   <p style={s.sectionTitle}>Recently Played</p>
                   <p style={s.sectionSubtle}>Jump back into your latest tracks</p>
                 </div>
-              </div>
+                <div style={s.sectionHeaderRight}>
+                  <span style={s.sectionMeta}>{recentlyPlayedTracks.length}</span>
+                  <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{recentlyPlayedOpen ? "▲" : "▼"}</span>
+                </div>
+              </button>
               {recentlyPlayedTracks.length === 0 ? (
                 <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>Start listening and your recent songs will appear here.</p>
               ) : (
                 <div style={s.recentlyPlayedGrid}>
-                  {recentlyPlayedTracks.map((track) => (
+                  {[...prioritizedRecentlyPlayed, ...(recentlyPlayedOpen ? remainingRecentlyPlayed : [])].map((track) => (
                     <button key={track.id} style={s.recentCard} onClick={() => setSelectedTrack(track)}>
                       {track.albumArt ? (
                         <img src={track.albumArt} alt="" style={s.recentCardArt} />
@@ -1551,7 +1650,9 @@ export default function Home() {
                 </div>
               </div>
               {!searchQuery ? null : searchLoading ? (
-                <p style={{ ...s.muted, textAlign: "center", marginTop: "3rem" }}>Searching…</p>
+                <div style={{ ...s.sectionLoader, marginTop: "3rem" }}>
+                  <ThemedLoader size={0.38} label="Searching Spotify" />
+                </div>
               ) : spotifyResults.length === 0 ? (
                 <p style={{ ...s.muted, textAlign: "center", marginTop: "3rem" }}>No results for "{searchQuery}"</p>
               ) : (
@@ -1654,7 +1755,9 @@ export default function Home() {
             : surroundingTracks.next
               ? [surroundingTracks.next, ...fallbackUpcomingTracks.filter((track) => track.id !== surroundingTracks.next.id)]
               : fallbackUpcomingTracks
-        ).slice(0, 6);
+        )
+          .slice(0, 6)
+          .map((track) => trackLookup[track.id] ?? track);
         const previousTrack =
           surroundingTracks.previous ??
           previousPlayerTrack ??
@@ -1668,6 +1771,9 @@ export default function Home() {
           0,
           Math.min(100, (modalProgressMs / Math.max(modalDurationMs, 1)) * 100)
         );
+        const modalArcStart = 0.1;
+        const modalArcEnd = 359.9;
+        const modalProgressArcPath = describeArcPath(50, 50, 45, modalArcStart, modalArcEnd);
         return (
           <div style={s.modalOverlay} onClick={() => setSelectedTrack(null)}>
             <div style={s.modalSheet} onClick={e => e.stopPropagation()}>
@@ -1738,25 +1844,21 @@ export default function Home() {
                         style={s.modalProgressRing}
                         aria-hidden="true"
                       >
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
+                        <path
+                          d={modalProgressArcPath}
                           fill="none"
                           stroke="rgba(255,255,255,0.14)"
                           strokeWidth="1.8"
                         />
-                        <circle
-                          cx="50"
-                          cy="50"
-                          r="45"
+                        <path
+                          d={modalProgressArcPath}
                           fill="none"
                           stroke="rgba(146, 196, 255, 0.98)"
                           strokeWidth="1.8"
                           strokeLinecap="round"
                           pathLength="100"
                           strokeDasharray={`${modalProgressPercent} 100`}
-                          transform="rotate(-90 50 50)"
+                          style={s.modalProgressActive}
                         />
                       </svg>
                       <div style={s.modalDiscInner}>
@@ -1858,7 +1960,10 @@ export default function Home() {
                       <button
                         key={`${track.id}-${index}`}
                         style={s.modalQueueRow}
-                        onClick={() => setSelectedTrack(track)}
+                        onClick={() => {
+                          setSelectedTrack(track);
+                          playTrackWithMode(track);
+                        }}
                       >
                         {track.albumArt ? (
                           <img src={track.albumArt} alt="" style={s.modalQueueArt} />
@@ -1906,13 +2011,10 @@ export default function Home() {
                             checked={selectedSnippetIndex === i}
                             onChange={() => handleSelectSnippet(activeModalTrack.id, i)}
                           />
-                          <span className="snippet-selector" />
-                          <span className="snippet-glow" />
                           <span className="snippet-label">
                             {ts.label || `Snippet ${i + 1}`}
                             <span className="snippet-meta">{formatMs(ts.positionMs)}</span>
                           </span>
-                          <span className="snippet-connector" />
                         </label>
                       ))}
                     </div>
@@ -1939,16 +2041,31 @@ export default function Home() {
         <div style={s.miniPlayerShell}>
           <div style={s.miniPlayerBar}>
             <button
-              className="checkbox-wrapper"
               style={s.miniModeToggle}
               onClick={() => setSnippetModeEnabled((value) => !value)}
               aria-label={snippetModeEnabled ? "Disable snippet mode" : "Enable snippet mode"}
               title={snippetModeEnabled ? "Snippet Mode On" : "Snippet Mode Off"}
             >
-              <input type="checkbox" checked={snippetModeEnabled} readOnly />
-              <label aria-hidden="true">
-                <span className="tick_mark" />
-              </label>
+              <span style={s.miniModeToggleInner} aria-hidden="true">
+                <span
+                  style={{
+                    ...s.miniModeBar,
+                    ...(snippetModeEnabled ? s.miniModeBarTopActive : s.miniModeBarTop),
+                  }}
+                />
+                <span
+                  style={{
+                    ...s.miniModeBar,
+                    ...(snippetModeEnabled ? s.miniModeBarMiddleActive : s.miniModeBarMiddle),
+                  }}
+                />
+                <span
+                  style={{
+                    ...s.miniModeBar,
+                    ...(snippetModeEnabled ? s.miniModeBarBottomActive : s.miniModeBarBottom),
+                  }}
+                />
+              </span>
             </button>
             <button style={s.miniPlayerMeta} onClick={() => setSelectedTrack(trackLookup[playerState.id] ?? playerState)}>
               {playerState.albumArt ? (
@@ -2073,6 +2190,18 @@ const s = {
     padding: "1.5rem", maxWidth: 600, margin: "0 auto",
     paddingBottom: "7rem",
   },
+  centeredLoaderScreen: {
+    minHeight: "100vh",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  sectionLoader: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: "0.6rem 0",
+  },
 
   // ── Header ──
   header: {
@@ -2134,7 +2263,172 @@ const s = {
     flexShrink: 0,
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
   },
+  headerProfilePlaceholder: {
+    width: 42,
+    height: 42,
+    borderRadius: 999,
+    border: "1px solid rgba(224,170,255,0.14)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    flexShrink: 0,
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.07), 0 10px 24px rgba(0,0,0,0.18)",
+    backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
+  },
+  headerProfileInner: {
+    width: 15,
+    height: 15,
+    borderRadius: 999,
+    background: "radial-gradient(circle at 35% 35%, rgba(255,255,255,0.9), rgba(224,170,255,0.75) 60%, rgba(157,78,221,0.5) 100%)",
+    boxShadow: "0 0 18px rgba(224,170,255,0.28)",
+  },
   headerRight: { display: "flex", gap: "0.5rem", flexShrink: 0 },
+  landingWrap: {
+    display: "flex",
+    flexDirection: "column",
+    gap: "1rem",
+    paddingBottom: "2rem",
+  },
+  landingHero: {
+    position: "relative",
+    minHeight: "60vh",
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    textAlign: "center",
+    gap: "0.85rem",
+    padding: "2.8rem 1.4rem 2.4rem",
+    borderRadius: 30,
+    border: "1px solid rgba(224,170,255,0.1)",
+    background:
+      "radial-gradient(circle at 50% 0%, rgba(157,78,221,0.22), transparent 48%), linear-gradient(180deg, rgba(20,9,28,0.94) 0%, rgba(11,7,16,0.98) 100%)",
+    boxShadow: "0 28px 72px rgba(0,0,0,0.42), inset 0 1px 0 rgba(255,255,255,0.05)",
+    backdropFilter: "blur(22px)",
+    WebkitBackdropFilter: "blur(22px)",
+    overflow: "hidden",
+  },
+  landingHeroGlow: {
+    position: "absolute",
+    inset: "-15% 18% auto",
+    height: 180,
+    background: "radial-gradient(circle, rgba(224,170,255,0.18), rgba(157,78,221,0.08) 45%, transparent 72%)",
+    filter: "blur(18px)",
+    pointerEvents: "none",
+  },
+  landingHeadline: {
+    position: "relative",
+    zIndex: 1,
+    margin: 0,
+    fontSize: "clamp(2.35rem, 8vw, 4.2rem)",
+    lineHeight: 0.95,
+    fontWeight: 850,
+    letterSpacing: "-0.05em",
+    maxWidth: "10ch",
+  },
+  landingSubheadline: {
+    position: "relative",
+    zIndex: 1,
+    margin: 0,
+    maxWidth: 420,
+    color: "#d2c7df",
+    fontSize: "0.97rem",
+    lineHeight: 1.55,
+  },
+  landingCtaMeta: {
+    position: "relative",
+    zIndex: 1,
+    margin: "0.1rem 0 0",
+    color: "#c9b9dd",
+    fontSize: "0.74rem",
+    fontWeight: 600,
+    letterSpacing: "0.01em",
+  },
+  landingMicroText: {
+    position: "relative",
+    zIndex: 1,
+    margin: 0,
+    color: "#8e81a0",
+    fontSize: "0.72rem",
+  },
+  landingSection: {
+    padding: "1.35rem 1.2rem",
+    borderRadius: 26,
+    border: "1px solid rgba(224,170,255,0.08)",
+    background: "linear-gradient(180deg, rgba(17,10,22,0.84) 0%, rgba(11,7,15,0.96) 100%)",
+    boxShadow: "0 18px 44px rgba(0,0,0,0.28), inset 0 1px 0 rgba(255,255,255,0.03)",
+    backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
+  },
+  landingSectionTitle: {
+    margin: 0,
+    color: "#fbf8ff",
+    fontSize: "1.18rem",
+    fontWeight: 760,
+    letterSpacing: "-0.03em",
+  },
+  landingSectionBody: {
+    margin: "0.5rem 0 0",
+    color: "#b3a8c2",
+    fontSize: "0.9rem",
+    lineHeight: 1.65,
+    maxWidth: 470,
+  },
+  landingFeatureGrid: {
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+    gap: "0.8rem",
+    marginTop: "1rem",
+  },
+  landingFeatureCard: {
+    padding: "1rem 0.95rem",
+    borderRadius: 20,
+    border: "1px solid rgba(224,170,255,0.08)",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.04) 0%, rgba(255,255,255,0.015) 100%)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+    backdropFilter: "blur(16px)",
+    WebkitBackdropFilter: "blur(16px)",
+  },
+  landingFeatureTitle: {
+    margin: 0,
+    color: "#f5effd",
+    fontSize: "0.95rem",
+    fontWeight: 700,
+    letterSpacing: "-0.02em",
+  },
+  landingFeatureBody: {
+    margin: "0.38rem 0 0",
+    color: "#9f93b2",
+    fontSize: "0.8rem",
+    lineHeight: 1.55,
+  },
+  landingFinalCta: {
+    alignItems: "center",
+    textAlign: "center",
+    display: "flex",
+    flexDirection: "column",
+    gap: "0.85rem",
+  },
+  landingDisclaimer: {
+    padding: "0.35rem 0.3rem 0",
+    textAlign: "center",
+  },
+  landingDisclaimerTitle: {
+    margin: 0,
+    color: "#d9ccea",
+    fontSize: "0.8rem",
+    fontWeight: 650,
+    letterSpacing: "0.01em",
+  },
+  landingDisclaimerBody: {
+    margin: "0.45rem auto 0",
+    color: "#897d98",
+    fontSize: "0.76rem",
+    lineHeight: 1.65,
+    maxWidth: 480,
+  },
   modeBar: {
     display: "flex",
     alignItems: "center",
@@ -2222,10 +2516,20 @@ const s = {
     letterSpacing: "-0.01em", flex: 1, minWidth: 0,
   },
   saveIconBtn: {
-    background: "#7b31c7", border: "none", borderRadius: 8,
-    width: 30, height: 30, display: "flex", alignItems: "center",
-    justifyContent: "center", cursor: "pointer",
-    flexShrink: 0, transition: "transform 0.15s, opacity 0.15s",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 10,
+    width: 34,
+    height: 34,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
+    transition: "transform 0.15s, opacity 0.15s, border-color 0.15s ease",
+    backdropFilter: "blur(18px)",
+    WebkitBackdropFilter: "blur(18px)",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 22px rgba(0,0,0,0.18)",
   },
   artist: { margin: "0 0 0.3rem", color: "#8888aa", fontSize: "0.82rem" },
   deviceBadge: {
@@ -2302,6 +2606,16 @@ const s = {
     flex: 1, display: "flex", alignItems: "center", gap: "0.5rem",
     background: "none", border: "none", color: "#f0f0f5",
     cursor: "pointer", fontSize: "0.88rem", padding: 0, textAlign: "left", minWidth: 0,
+  },
+  homeSnippetPlayBtn: {
+    background: "none",
+    border: "none",
+    color: "#dcaeff",
+    cursor: "pointer",
+    fontSize: "0.95rem",
+    padding: "0 0.2rem",
+    flexShrink: 0,
+    lineHeight: 1,
   },
   playIcon: { color: ORANGE, fontSize: "0.65rem", flexShrink: 0 },
   tsLabel: { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" },
@@ -2398,16 +2712,28 @@ const s = {
   playlistGridCard: {
     display: "flex",
     alignItems: "center",
-    gap: "0.7rem",
+    gap: "0.25rem",
     minWidth: 0,
-    padding: "0.7rem",
+    padding: "0.4rem 0.45rem 0.4rem 0.4rem",
     borderRadius: 18,
     border: "1px solid rgba(224,170,255,0.06)",
     background: "linear-gradient(180deg, rgba(255,255,255,0.032) 0%, rgba(255,255,255,0.02) 100%)",
     color: "#f2edf8",
-    cursor: "pointer",
     textAlign: "left",
     boxShadow: "inset 0 1px 0 rgba(255,255,255,0.02)",
+  },
+  playlistGridMain: {
+    flex: 1,
+    minWidth: 0,
+    display: "flex",
+    alignItems: "center",
+    gap: "0.7rem",
+    padding: "0.3rem",
+    background: "transparent",
+    border: 0,
+    color: "inherit",
+    textAlign: "left",
+    cursor: "pointer",
   },
   playlistGridCardActive: {
     border: "1px solid rgba(224,170,255,0.18)",
@@ -2442,6 +2768,22 @@ const s = {
     overflow: "hidden",
     textOverflow: "ellipsis",
     whiteSpace: "nowrap",
+  },
+  playlistQuickPlayBtn: {
+    width: 20,
+    height: 20,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    alignSelf: "center",
+    marginRight: "0.25rem",
+    border: 0,
+    padding: 0,
+    background: "transparent",
+    color: "#e7d8f7",
+    cursor: "pointer",
+    flexShrink: 0,
+    opacity: 0.82,
   },
   playlistGridCount: {
     color: "#9486a6",
@@ -2481,6 +2823,19 @@ const s = {
     minWidth: 0,
     flex: 1,
     cursor: "pointer",
+  },
+  trackOptionsBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: "50%",
+    border: "1px solid rgba(255,255,255,0.08)",
+    background: "rgba(255,255,255,0.03)",
+    color: "#d9c8f1",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    cursor: "pointer",
+    flexShrink: 0,
   },
   compactTrackArt: {
     width: 40,
@@ -2845,12 +3200,67 @@ const s = {
     boxShadow: "0 14px 34px rgba(0,0,0,0.38), inset 0 1px 0 rgba(255,255,255,0.04)",
   },
   miniModeToggle: {
-    background: "none",
-    border: "none",
+    width: 42,
+    height: 42,
+    borderRadius: "50%",
+    background: "linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)",
+    border: "1px solid rgba(255,255,255,0.1)",
     padding: 0,
     margin: 0,
     flexShrink: 0,
     cursor: "pointer",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 10px 24px rgba(0,0,0,0.22)",
+  },
+  miniModeToggleInner: {
+    position: "relative",
+    width: 18,
+    height: 18,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    transform: "rotate(0deg)",
+    transition: "transform 0.32s ease",
+  },
+  miniModeBar: {
+    position: "absolute",
+    height: 2.5,
+    borderRadius: 999,
+    background: "#ffffff",
+    boxShadow: "0 0 10px rgba(255,255,255,0.16)",
+    transition: "transform 0.32s ease, opacity 0.22s ease, width 0.32s ease",
+  },
+  miniModeBarTop: {
+    width: 10,
+    opacity: 0.55,
+    transform: "translateY(0)",
+  },
+  miniModeBarMiddle: {
+    width: 18,
+    transform: "translateY(0)",
+    opacity: 1,
+  },
+  miniModeBarBottom: {
+    width: 10,
+    opacity: 0.55,
+    transform: "translateY(0)",
+  },
+  miniModeBarTopActive: {
+    width: 18,
+    opacity: 1,
+    transform: "translateY(-6px)",
+  },
+  miniModeBarMiddleActive: {
+    width: 18,
+    transform: "translateY(0)",
+    opacity: 1,
+  },
+  miniModeBarBottomActive: {
+    width: 18,
+    opacity: 1,
+    transform: "translateY(6px)",
   },
   miniPlayerMeta: {
     flex: 1,
@@ -3175,6 +3585,9 @@ const s = {
     pointerEvents: "none",
     filter: "drop-shadow(0 0 8px rgba(120, 180, 255, 0.18))",
   },
+  modalProgressActive: {
+    transition: "stroke-dasharray 120ms linear",
+  },
   modalProgressHitArea: {
     position: "absolute",
     inset: "3.5%",
@@ -3213,12 +3626,17 @@ const s = {
   },
   modalDiscTime: {
     position: "absolute",
-    bottom: "1.3rem",
+    top: "86.2%",
     left: "50%",
-    transform: "translateX(-50%)",
-    fontSize: "0.9rem",
+    transform: "translate(-50%, -50%)",
+    fontSize: "0.98rem",
     color: "#fffafc",
     letterSpacing: "0.02em",
+    padding: "0.16rem 0.5rem",
+    borderRadius: 999,
+    background: "rgba(9,6,14,0.72)",
+    boxShadow: "0 10px 20px rgba(0,0,0,0.18), inset 0 1px 0 rgba(255,255,255,0.04)",
+    zIndex: 4,
   },
   modalSeekWrap: {
     marginTop: "-0.25rem",
