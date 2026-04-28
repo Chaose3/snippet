@@ -1073,7 +1073,7 @@ export default function Home() {
         <>
           {/* ── Home Tab ── */}
           {activeTab === "home" && (<>
-            {!playerState && !isNativeApp && !webPlayerId && devices.length === 0 && (
+            {!playerState && !isNativeApp && !webPlayerId && devices.length === 0 ? (
               <div style={s.devicePicker}>
                 <p style={s.devicePickerHeading}>{browserPlaybackHelp.title}</p>
                 <p style={{ ...s.muted, fontSize: "0.82rem" }}>
@@ -1085,10 +1085,8 @@ export default function Home() {
                   </p>
                 ) : null}
                 <button style={{ ...s.btnGhost, marginTop: "0.9rem" }} onClick={fetchDevices}>Refresh devices</button>
-              )}
-            </div>
-            )
-          ) : (
+              </div>
+            ) : (
             <div style={s.card}>
               <div style={s.cardGradientBar} />
               <div style={s.cardInner}>
@@ -1127,7 +1125,9 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            )}
+              </div>
+            </div>
+          )}
 
             <section style={s.sectionBlock}>
               <button style={s.sectionHeader} onClick={() => setSnippetsOpen((v) => !v)}>
@@ -1138,8 +1138,8 @@ export default function Home() {
                 <div style={s.sectionHeaderRight}>
                   <span style={s.sectionMeta}>{snippetTracks.length}</span>
                   <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{snippetsOpen ? "▲" : "▼"}</span>
-              </div>
-
+                </div>
+              </button>
 
               {nowPlayingTimestamps.length > 0 ? (
                 <ul style={s.list}>
@@ -1168,9 +1168,7 @@ export default function Home() {
                   No saved moments for this song yet.
                 </p>
               )}
-              </div>{/* cardInner */}
-            </div>
-          )}
+            </section>
 
           {/* ── Your Snippets ── */}
           {Object.keys(allTimestamps).length > 0 && (() => {
@@ -1186,72 +1184,15 @@ export default function Home() {
             }));
 
             return (
-              <div style={s.librarySection}>
-                <p style={s.libraryLabel}>Your Snippets</p>
-                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem" }}>
-                  {snippetTracks.map(({ trackId, track, tss }) => (
-                    <div key={trackId} style={s.snippetCard}>
-                      <div style={s.snippetCardHeader}>
-                        {track?.albumArt ? (
-                          <img src={track.albumArt} alt="" style={s.snippetArt} />
-                        ) : (
-                          <div style={s.snippetArtFallback} />
-                        )}
-                        <div style={s.snippetTrackMeta}>
-                          <span style={s.snippetTrackName}>{track?.name ?? "Unknown track"}</span>
-                          <span style={s.snippetTrackArtist}>{track?.artists ?? trackId}</span>
-                        </div>
-                        {track && (
-                          <button style={s.playTrackBtn} onClick={() => jump(track.uri, 0)} title="Play from start">
-                            <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>
-                          </button>
-                        )}
-                      </div>
-                      <div style={s.snippetList}>
-                        {tss.map((ts, i) => {
-                          const isEditing = editingSnippet?.trackId === trackId && editingSnippet?.index === i;
-                          return (
-                            <div key={i} style={s.snippetRow}>
-                              {isEditing ? (
-                                <>
-                                  <input
-                                    style={s.snippetEditInput}
-                                    value={editLabel}
-                                    onChange={(e) => setEditLabel(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === "Enter") handleUpdateTimestamp(trackId, i, editLabel);
-                                      if (e.key === "Escape") setEditingSnippet(null);
-                                    }}
-                                    autoFocus
-                                  />
-                                  <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
-                                  <button style={s.snippetSaveBtn} onClick={() => handleUpdateTimestamp(trackId, i, editLabel)}>✓</button>
-                                  <button style={s.deleteBtn} onClick={() => setEditingSnippet(null)}>✕</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button
-                                    style={s.jumpBtn}
-                                    onClick={() => track && jump(track.uri, ts.positionMs)}
-                                  >
-                                    <span style={s.playIcon}>▶</span>
-                                    <span style={s.tsLabel}>{ts.label || formatMs(ts.positionMs)}</span>
-                                  </button>
-                                  <span style={s.tsTime}>{formatMs(ts.positionMs)}</span>
-                                  <button
-                                    style={s.editBtn}
-                                    onClick={() => { setEditingSnippet({ trackId, index: i }); setEditLabel(ts.label || ""); }}
-                                    title="Edit label"
-                                  >✏</button>
-                                  <button style={s.deleteBtn} onClick={() => handleDelete(trackId, i)} title="Remove">✕</button>
-                                </>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
+            <section style={s.sectionBlock}>
+              <button style={s.sectionHeader} onClick={() => setSnippetsOpen((v) => !v)}>
+                <div>
+                  <p style={s.sectionTitle}>Your Snippets</p>
+                  <p style={s.sectionSubtle}>Organized by most recent moments</p>
+                </div>
+                <div style={s.sectionHeaderRight}>
+                  <span style={s.sectionMeta}>{snippetTracks.length}</span>
+                  <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{snippetsOpen ? "▲" : "▼"}</span>
                 </div>
               </button>
               {snippetsOpen && (
@@ -1385,6 +1326,8 @@ export default function Home() {
                 )
               )}
             </section>
+            );
+          })()}
 
             <section style={s.sectionBlock}>
               <button style={s.sectionHeader} onClick={() => setPlaylistsOpen((v) => !v)}>
