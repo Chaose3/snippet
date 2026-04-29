@@ -9,7 +9,11 @@
       "Bash(npm audit:*)",
       "Bash(node -e \"console.log\\(require\\('./node_modules/next/package.json'\\).version\\)\")",
       "Bash(python3 -c ':*)",
-      "WebFetch(domain:uiverse.io)"
+      "WebFetch(domain:uiverse.io)",
+      "Bash(node --input-type=commonjs -e \"require\\('./app/page.js'\\)\")",
+      "Bash(npm run *)",
+      "Bash(curl -s http://localhost:3000)",
+      "Bash(npx next *)"
     ]
   }
 }

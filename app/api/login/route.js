@@ -43,7 +43,7 @@ export async function GET(request) {
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
     state: verifier, // Spotify echoes this back in the callback URL unchanged
-    show_dialog: "true",
+    show_dialog: "false",
   });
 
   const url = `https://accounts.spotify.com/authorize?${params.toString()}`;

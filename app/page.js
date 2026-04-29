@@ -190,6 +190,7 @@ export default function Home() {
   const [modalClipNotice, setModalClipNotice] = useState("");
   const [modalMenuOpen, setModalMenuOpen] = useState(false);
   const [modalMenuSnippetsOpen, setModalMenuSnippetsOpen] = useState(false);
+  const [emailCopied, setEmailCopied] = useState(false);
 
   // Spotify global search
   const [spotifyResults, setSpotifyResults] = useState([]);
@@ -1405,7 +1406,24 @@ export default function Home() {
           <section style={{ ...s.landingDisclaimer, animationDelay: "340ms" }} className="landingFadeUp">
             <p style={s.landingDisclaimerTitle}>Built by a two-person team</p>
             <p style={s.landingDisclaimerBody}>
-              We&apos;re a two man army trying to make our dream real. Snippet is still in development, and we&apos;re shaping it in public. If you have feedback, ideas, or something feels off, please send me an email at chaose3@outlook.com.
+              We&apos;re a two man army trying to make our dream real. Snippet is still in development, and we&apos;re shaping it in public. If you have feedback, ideas, or something feels off, please send me an email at{" "}
+              <span style={{ position: "relative", display: "inline-block" }}>
+                <button
+                  style={{ background: "none", border: "none", padding: 0, color: "#c084fc", textDecoration: "underline", cursor: "pointer", fontSize: "inherit", fontFamily: "inherit" }}
+                  onClick={() => {
+                    navigator.clipboard.writeText("chaose3@outlook.com");
+                    setEmailCopied(true);
+                    setTimeout(() => setEmailCopied(false), 2000);
+                  }}
+                >
+                  chaose3@outlook.com
+                </button>
+                {emailCopied && (
+                  <span style={{ position: "absolute", bottom: "calc(100% + 6px)", left: "50%", transform: "translateX(-50%)", background: "#1e1030", border: "1px solid rgba(224,170,255,0.2)", color: "#e0aaff", fontSize: "0.72rem", padding: "0.25rem 0.6rem", borderRadius: 8, whiteSpace: "nowrap", pointerEvents: "none" }}>
+                    Copied!
+                  </span>
+                )}
+              </span>
             </p>
           </section>
         </div>
