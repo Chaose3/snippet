@@ -1405,7 +1405,7 @@ export default function Home() {
           <section style={{ ...s.landingDisclaimer, animationDelay: "340ms" }} className="landingFadeUp">
             <p style={s.landingDisclaimerTitle}>Built by a two-person team</p>
             <p style={s.landingDisclaimerBody}>
-              We&apos;re a two man army trying to make our dream real. Snippet is still in development, and we&apos;re shaping it in public. If you have feedback, ideas, or something feels off, please let us know.
+              We&apos;re a two man army trying to make our dream real. Snippet is still in development, and we&apos;re shaping it in public. If you have feedback, ideas, or something feels off, please send me an email at chaose3@outlook.com.
             </p>
           </section>
         </div>
