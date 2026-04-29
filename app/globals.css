@@ -2,6 +2,12 @@
   box-sizing: border-box;
 }
 
+html {
+  background: #08050c;
+  scrollbar-color: #9D4EDD #08050c;
+  scrollbar-width: thin;
+}
+
 body {
   margin: 0;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;

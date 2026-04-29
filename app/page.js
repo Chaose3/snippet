@@ -1400,7 +1400,7 @@ export default function Home() {
           <section style={{ ...s.landingSection, ...s.landingFinalCta, animationDelay: "290ms" }} className="landingFadeUp">
             <p style={s.landingSectionTitle}>Start in seconds</p>
             <button style={s.btnPrimaryLg} onClick={goLogin}>Connect Spotify</button>
-            <p style={s.landingCtaMeta}>Start in seconds</p>
+            <p style={s.landingCtaMeta}></p>
           </section>
 
           <section style={{ ...s.landingDisclaimer, animationDelay: "340ms" }} className="landingFadeUp">
