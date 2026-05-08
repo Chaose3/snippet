@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
+const ALLOWED_REDIRECT_URIS = new Set([REDIRECT_URI, "snippet://callback"]);
 
 /**
  * Exchange authorization code for tokens (PKCE — no client secret).
@@ -24,6 +25,7 @@ export async function POST(request) {
 
   const code = body?.code;
   const codeVerifier = body?.code_verifier;
+  const redirectUri = body?.redirect_uri ?? REDIRECT_URI;
 
   if (!code || typeof code !== "string") {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
@@ -31,11 +33,14 @@ export async function POST(request) {
   if (!codeVerifier || typeof codeVerifier !== "string") {
     return NextResponse.json({ error: "Missing code_verifier" }, { status: 400 });
   }
+  if (!ALLOWED_REDIRECT_URIS.has(redirectUri)) {
+    return NextResponse.json({ error: "Invalid redirect_uri" }, { status: 400 });
+  }
 
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     client_id: clientId,
     code_verifier: codeVerifier,
   });

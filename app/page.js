@@ -1159,9 +1159,75 @@ export default function Home() {
     const { generateCodeVerifier, generateCodeChallenge } = await import("../lib/pkce-browser");
     const verifier = generateCodeVerifier();
     const challenge = await generateCodeChallenge(verifier);
-    // Pass verifier as state — Spotify echoes it back in the callback URL,
-    // so no cross-origin storage (sessionStorage/cookies) is needed.
-    window.location.href = `/api/login?code_challenge=${encodeURIComponent(challenge)}&verifier=${encodeURIComponent(verifier)}`;
+
+    const isNative = Boolean(
+      typeof window !== "undefined" &&
+      window.Capacitor?.isNativePlatform?.()
+    );
+
+    if (isNative) {
+      // Native iOS: open SFSafariViewController pointing at Spotify's auth page.
+      // Spotify redirects to snippet://callback?code=...&state=<verifier> which
+      // iOS delivers as an appUrlOpen event — we catch it, close the sheet, and
+      // exchange the code for tokens via /api/token.
+      const { Browser } = await import("@capacitor/browser");
+      const { App } = await import("@capacitor/app");
+
+      const apiBase = process.env.NEXT_PUBLIC_API_BASE_URL ?? "";
+      const loginUrl =
+        `${apiBase}/api/login?native=1` +
+        `&code_challenge=${encodeURIComponent(challenge)}` +
+        `&verifier=${encodeURIComponent(verifier)}`;
+
+      let listener;
+      listener = await App.addListener("appUrlOpen", async (event) => {
+        listener.remove();
+        await Browser.close();
+
+        const url = new URL(event.url);
+        const code = url.searchParams.get("code");
+        const returnedVerifier = url.searchParams.get("state");
+        const errorParam = url.searchParams.get("error");
+
+        if (errorParam || !code || !returnedVerifier) {
+          console.error("[goLogin] native callback error", errorParam);
+          return;
+        }
+
+        try {
+          const res = await fetch(`${apiBase}/api/token`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              code,
+              code_verifier: returnedVerifier,
+              redirect_uri: "snippet://callback",
+            }),
+          });
+
+          if (!res.ok) {
+            console.error("[goLogin] token exchange failed", await res.text());
+            return;
+          }
+
+          const data = await res.json();
+          const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
+          localStorage.setItem(STORAGE_KEY, data.access_token);
+          localStorage.setItem(STORAGE_EXPIRES, String(expiresAt));
+          if (data.refresh_token) {
+            localStorage.setItem(STORAGE_REFRESH, data.refresh_token);
+          }
+          setToken(data.access_token);
+        } catch (err) {
+          console.error("[goLogin] native token exchange error", err);
+        }
+      });
+
+      await Browser.open({ url: loginUrl, presentationStyle: "popover" });
+    } else {
+      window.location.href =
+        `/api/login?code_challenge=${encodeURIComponent(challenge)}&verifier=${encodeURIComponent(verifier)}`;
+    }
   };
 
   const handleLogout = () => {
@@ -1923,7 +1989,7 @@ export default function Home() {
                       <span className="modal-clip-btn__icon-wrap">
                         <img src="/snippet-logo.png" alt="" className="modal-clip-btn__icon" />
                       </span>
-                      <span className="modal-clip-btn__text">Clip</span>
+                      <span className="modal-clip-btn__text">Snip</span>
                     </button>
                     <div style={s.modalClipNoticeWrap}>
                       <span
