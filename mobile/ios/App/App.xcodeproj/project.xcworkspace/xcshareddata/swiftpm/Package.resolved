@@ -1,5 +1,5 @@
 {
-  "originHash" : "85b84b91db5c0f63e418d22fdcbd2b8348b394ff51f3b9096dc96192579ff294",
+  "originHash" : "78c42464ae6b8b376372a56e9666e8030406d650a498108ba1159c5fe5f64d06",
   "pins" : [
     {
       "identity" : "capacitor-swift-pm",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "3fe94bbbe43e63ada75aa6788fc10e3764622a97",
         "version" : "6.2.1"
+      }
+    },
+    {
+      "identity" : "ios-sdk",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/spotify/ios-sdk",
+      "state" : {
+        "branch" : "master",
+        "revision" : "0b3e54771738ad5e64f22c8e5e19ca76d6becc6c"
       }
     }
   ],

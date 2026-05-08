@@ -13,7 +13,8 @@
       "Bash(node --input-type=commonjs -e \"require\\('./app/page.js'\\)\")",
       "Bash(npm run *)",
       "Bash(curl -s http://localhost:3000)",
-      "Bash(npx next *)"
+      "Bash(npx next *)",
+      "Bash(pod --version)"
     ]
   }
 }
