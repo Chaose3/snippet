@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:lan": "next dev --hostname 0.0.0.0 --port 3000",
+    "ios:sync": "cd mobile && npm run sync",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
