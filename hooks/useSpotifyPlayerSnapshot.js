@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { App } from "@capacitor/app";
 import { getStoredToken } from "../lib/auth-storage";
 import { isNativeCapacitor } from "../lib/capacitor/platform";
 import { getPlayerState, getQueue } from "../lib/snippet";
@@ -65,12 +64,17 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
     let appListenerRemoved = false;
     let appListenerHandle = null;
     if (isNativeCapacitor()) {
-      App.addListener("appStateChange", ({ isActive }) => {
-        if (isActive) refreshPlayerSnapshot();
-      }).then((handle) => {
-        if (!appListenerRemoved) appListenerHandle = handle;
-        else handle.remove();
-      });
+      import("@capacitor/app")
+        .then(({ App }) =>
+          App.addListener("appStateChange", ({ isActive }) => {
+            if (isActive) refreshPlayerSnapshot();
+          })
+        )
+        .then((handle) => {
+          if (!appListenerRemoved) appListenerHandle = handle;
+          else handle.remove();
+        })
+        .catch(() => {});
     }
 
     return () => {

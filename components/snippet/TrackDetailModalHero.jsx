@@ -5,6 +5,7 @@ import { formatMs } from "../../lib/timestamps";
 import { s } from "./homeStyles";
 
 export const TrackDetailModalHero = memo(function TrackDetailModalHero({
+  variant = "modal",
   activeModalTrack,
   isCurrentTrack,
   playerState,
@@ -24,8 +25,12 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
   jump,
   resolvePlaybackPosition,
 }) {
+  const isPlayer = variant === "player";
+  const heroStyle = isPlayer ? s.playerHero : s.modalHero;
+  const discStageStyle = isPlayer ? s.playerDiscStage : s.modalDiscStage;
+
   return (
-    <div style={s.modalHero}>
+    <div style={heroStyle}>
       <div style={s.modalMetaRow}>
         <div>
           <p style={s.modalTrackName}>{activeModalTrack.name}</p>
@@ -33,7 +38,7 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
         </div>
       </div>
 
-      <div style={s.modalDiscStage}>
+      <div style={discStageStyle}>
         <div style={{ ...s.modalSideArt, ...s.modalSideArtLeft }}>
           {previousTrack?.albumArt ? (
             <>

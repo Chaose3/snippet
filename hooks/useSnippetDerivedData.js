@@ -9,7 +9,8 @@ export function useSnippetDerivedData({
   selectedSnippetIndexByTrack,
   playlists,
   recentlyPlayedTracks,
-  selectedTrack,
+  spotifyResults = [],
+  routeTrackId = null,
   webPlayerId,
   webPlayerError,
 }) {
@@ -48,8 +49,14 @@ export function useSnippetDerivedData({
         durationMs: playerState.durationMs,
       };
     }
+    (recentlyPlayedTracks || []).forEach((t) => {
+      if (t?.id) lookup[t.id] = lookup[t.id] ?? t;
+    });
+    (spotifyResults || []).forEach((t) => {
+      if (t?.id) lookup[t.id] = lookup[t.id] ?? t;
+    });
     return lookup;
-  }, [flattenedPlaylistTracks, likedTracks, playerState]);
+  }, [flattenedPlaylistTracks, likedTracks, playerState, recentlyPlayedTracks, spotifyResults]);
 
   useEffect(() => {
     if (!playerState?.id) return;
@@ -91,13 +98,13 @@ export function useSnippetDerivedData({
 
   const fallbackUpcomingTracks = useMemo(() => {
     for (const tracks of Object.values(playlistTracks)) {
-      const currentIndex = tracks.findIndex((track) => track.id === selectedTrack?.id);
+      const currentIndex = tracks.findIndex((track) => track.id === routeTrackId);
       if (currentIndex >= 0) {
         return tracks.slice(currentIndex + 1, currentIndex + 7);
       }
     }
     return [];
-  }, [playlistTracks, selectedTrack?.id]);
+  }, [playlistTracks, routeTrackId]);
 
   const browserPlaybackHelp = useMemo(
     () => getBrowserPlaybackHelp(webPlayerId, webPlayerError),

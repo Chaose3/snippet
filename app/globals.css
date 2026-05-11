@@ -756,3 +756,30 @@ input[type="range"]::-moz-range-thumb {
     inset 0 1px 0 rgba(255, 255, 255, 0.32),
     0 0 18px rgba(224, 170, 255, 0.22);
 }
+
+@keyframes player-skeleton-shimmer {
+  0% {
+    opacity: 0.38;
+  }
+  50% {
+    opacity: 0.78;
+  }
+  100% {
+    opacity: 0.38;
+  }
+}
+
+.player-skeleton-pill {
+  animation: player-skeleton-shimmer 1.05s ease-in-out infinite;
+  background: rgba(224, 170, 255, 0.16);
+}
+
+.player-open-target {
+  transition: transform 0.1s ease, opacity 0.1s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.player-open-target:active {
+  transform: scale(0.985);
+  opacity: 0.9;
+}

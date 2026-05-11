@@ -8,7 +8,8 @@ export const TrackDetailModalQueue = memo(function TrackDetailModalQueue({
   upcomingTracks,
   setModalMenuOpen,
   setModalMenuSnippetsOpen,
-  setSelectedTrack,
+  onNavigateToTrack,
+  onPrefetchTrack,
   playTrackWithMode,
 }) {
   if (upcomingTracks.length === 0) return null;
@@ -41,9 +42,12 @@ export const TrackDetailModalQueue = memo(function TrackDetailModalQueue({
         {upcomingTracks.map((track, index) => (
           <button
             key={`${track.id}-${index}`}
+            type="button"
+            className="player-open-target"
             style={s.modalQueueRow}
+            onPointerEnter={() => onPrefetchTrack?.(track.id)}
             onClick={() => {
-              setSelectedTrack(track);
+              onNavigateToTrack(track);
               playTrackWithMode(track);
             }}
           >

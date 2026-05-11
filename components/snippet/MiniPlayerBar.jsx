@@ -14,6 +14,7 @@ export const MiniPlayerBar = memo(function MiniPlayerBar({
   handlePlayPause,
   handleSkipNext,
   onOpenNowPlaying,
+  onPrefetchPlayer,
 }) {
   return (
     <div style={s.miniPlayerShell}>
@@ -46,7 +47,13 @@ export const MiniPlayerBar = memo(function MiniPlayerBar({
             />
           </span>
         </button>
-        <button type="button" style={s.miniPlayerMeta} onClick={() => onOpenNowPlaying(trackLookup[playerState.id] ?? playerState)}>
+        <button
+          type="button"
+          className="player-open-target"
+          style={s.miniPlayerMeta}
+          onPointerEnter={() => onPrefetchPlayer?.(playerState.id)}
+          onClick={() => onOpenNowPlaying(trackLookup[playerState.id] ?? playerState)}
+        >
           {playerState.albumArt ? (
             <img src={playerState.albumArt} alt="" style={s.miniPlayerArt} />
           ) : (

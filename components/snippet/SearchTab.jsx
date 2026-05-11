@@ -12,7 +12,8 @@ export const SearchTab = memo(function SearchTab({
   spotifyResults,
   allTimestamps,
   snippetModeEnabled,
-  onSelectTrack,
+  onOpenTrack,
+  onPrefetchPlayer,
   onPlayTrackWithMode,
   jump,
 }) {
@@ -80,7 +81,20 @@ export const SearchTab = memo(function SearchTab({
             const tss = allTimestamps[track.id] || [];
             return (
               <div key={track.id} style={s.trackRow}>
-                <div style={{ ...s.trackLeft, cursor: "pointer" }} onClick={() => onSelectTrack(track)}>
+                <div
+                  role="button"
+                  tabIndex={0}
+                  className="player-open-target"
+                  style={{ ...s.trackLeft, cursor: "pointer" }}
+                  onPointerEnter={() => onPrefetchPlayer?.(track.id)}
+                  onClick={() => onOpenTrack(track)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      onOpenTrack(track);
+                    }
+                  }}
+                >
                   {track.albumArt ? (
                     <img src={track.albumArt} alt="" style={s.trackArt} />
                   ) : (
@@ -96,7 +110,10 @@ export const SearchTab = memo(function SearchTab({
                             key={i}
                             type="button"
                             style={s.chip}
-                            onClick={() => jump(track, ts.positionMs, track)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              jump(track, ts.positionMs, track);
+                            }}
                             title={ts.label}
                           >
                             {ts.label}

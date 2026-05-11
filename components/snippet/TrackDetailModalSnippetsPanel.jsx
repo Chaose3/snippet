@@ -17,7 +17,7 @@ export const TrackDetailModalSnippetsPanel = memo(function TrackDetailModalSnipp
   selectedSnippet,
   handleSelectSnippet,
   jump,
-  setSelectedTrack,
+  onRequestClose,
 }) {
   if (!isCurrentTrack && tss.length === 0) return null;
 
@@ -65,7 +65,7 @@ export const TrackDetailModalSnippetsPanel = memo(function TrackDetailModalSnipp
             onClick={() => {
               if (!selectedSnippet) return;
               jump(activeModalTrack, selectedSnippet.positionMs, activeModalTrack);
-              setSelectedTrack(null);
+              onRequestClose();
             }}
           >
             Play selected snippet

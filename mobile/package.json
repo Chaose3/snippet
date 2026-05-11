@@ -4,10 +4,13 @@
   "private": true,
   "scripts": {
     "ios": "cap run ios",
-    "sync": "cap sync ios",
-    "open": "cap open ios"
+    "android": "cap run android",
+    "sync": "cap sync",
+    "open": "cap open ios",
+    "open:android": "cap open android"
   },
   "dependencies": {
+    "@capacitor/android": "^6.2.1",
     "@capacitor/app": "^6.0.0",
     "@capacitor/browser": "^6.0.0",
     "@capacitor/core": "^6.0.0",

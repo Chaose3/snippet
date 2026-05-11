@@ -46,7 +46,8 @@ export const HomeTab = memo(function HomeTab({
   remainingRecentlyPlayed,
   recentlyPlayedOpen,
   setRecentlyPlayedOpen,
-  setSelectedTrack,
+  onOpenPlayer,
+  onPrefetchPlayer,
 }) {
   return (
     <>
@@ -98,7 +99,8 @@ export const HomeTab = memo(function HomeTab({
         remainingRecentlyPlayed={remainingRecentlyPlayed}
         recentlyPlayedOpen={recentlyPlayedOpen}
         setRecentlyPlayedOpen={setRecentlyPlayedOpen}
-        setSelectedTrack={setSelectedTrack}
+        onOpenPlayer={onOpenPlayer}
+        onPrefetchPlayer={onPrefetchPlayer}
       />
     </>
   );

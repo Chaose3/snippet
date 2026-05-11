@@ -9,7 +9,8 @@ export const HomeRecentlyPlayedSection = memo(function HomeRecentlyPlayedSection
   remainingRecentlyPlayed,
   recentlyPlayedOpen,
   setRecentlyPlayedOpen,
-  setSelectedTrack,
+  onOpenPlayer,
+  onPrefetchPlayer,
 }) {
   return (
     <section style={s.sectionBlock}>
@@ -28,7 +29,14 @@ export const HomeRecentlyPlayedSection = memo(function HomeRecentlyPlayedSection
       ) : (
         <div style={s.recentlyPlayedGrid}>
           {[...prioritizedRecentlyPlayed, ...(recentlyPlayedOpen ? remainingRecentlyPlayed : [])].map((track) => (
-            <button key={track.id} style={s.recentCard} onClick={() => setSelectedTrack(track)}>
+            <button
+              key={track.id}
+              type="button"
+              className="player-open-target"
+              style={s.recentCard}
+              onPointerEnter={() => onPrefetchPlayer?.(track.id)}
+              onClick={() => onOpenPlayer(track)}
+            >
               {track.albumArt ? (
                 <img src={track.albumArt} alt="" style={s.recentCardArt} />
               ) : (
