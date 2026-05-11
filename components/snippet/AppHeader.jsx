@@ -10,7 +10,7 @@ export const AppHeader = memo(function AppHeader({ token, onOpenSearch }) {
         <img src="/snippet-logo.png" alt="Snippet" style={s.brandIcon} />
         <div style={s.brandTextWrap}>
           <p style={s.brandTitle}>Snippet</p>
-          <p style={s.brandSubtitle}>Jump to the best parts</p>
+          <p style={s.brandSubtitle}>Jump to the best parts test by Neurodek</p>
         </div>
       </div>
       {token ? (
