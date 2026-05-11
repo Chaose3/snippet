@@ -1,0 +1,19 @@
+{
+	"appId": "com.snippet.app",
+	"appName": "Snippet",
+	"webDir": "www",
+	"server": {
+		"url": "http://192.168.88.141:3000",
+		"cleartext": true,
+		"allowNavigation": [
+			"accounts.spotify.com"
+		]
+	},
+	"ios": {
+		"scheme": "snippet"
+	},
+	"packageClassList": [
+		"AppPlugin",
+		"CAPBrowserPlugin"
+	]
+}

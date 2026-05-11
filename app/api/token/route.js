@@ -24,6 +24,9 @@ export async function POST(request) {
 
   const code = body?.code;
   const codeVerifier = body?.code_verifier;
+ const redirectUri = typeof body?.redirect_uri === "string" && body.redirect_uri.length > 0
+   ? body.redirect_uri
+   : REDIRECT_URI;
 
   if (!code || typeof code !== "string") {
     return NextResponse.json({ error: "Missing code" }, { status: 400 });
@@ -35,7 +38,7 @@ export async function POST(request) {
   const params = new URLSearchParams({
     grant_type: "authorization_code",
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     client_id: clientId,
     code_verifier: codeVerifier,
   });

@@ -62,6 +62,16 @@ function getNativeSpotifyBridge() {
   return capacitor?.Plugins?.SpotifyBridge ?? null;
 }
 
+function isNativeCapacitor() {
+  if (typeof window === "undefined") return false;
+  const c = window.Capacitor;
+  if (!c) return false;
+  if (typeof c.isNativePlatform === "function") return Boolean(c.isNativePlatform());
+  if (typeof c.getPlatform === "function") return c.getPlatform() !== "web";
+  // Fallback: Capacitor injects a Plugins object on native platforms.
+  return Boolean(c.Plugins);
+}
+
 function polarToCartesian(cx, cy, r, angleDeg) {
   const angleRad = ((angleDeg - 90) * Math.PI) / 180;
   return {
@@ -306,6 +316,89 @@ export default function Home() {
       if (!t) setUrlError(detail || err);
       window.history.replaceState({}, "", "/");
     }
+  }, []);
+
+  // ── Native OAuth deep link (snippet://callback) ─────────────────────────────
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!isNativeCapacitor()) return;
+
+    let remove = null;
+    (async () => {
+      try {
+        const { App } = await import("@capacitor/app");
+        const { Browser } = await import("@capacitor/browser");
+
+        const handler = async ({ url }) => {
+          try {
+            if (!url || !url.startsWith("snippet://callback")) return;
+            const parsed = new URL(url);
+            const code = parsed.searchParams.get("code");
+            const verifier = parsed.searchParams.get("state"); // we set this to the PKCE verifier
+            const error = parsed.searchParams.get("error");
+
+            if (error) {
+              setUrlError(error);
+              await Browser.close().catch(() => {});
+              return;
+            }
+
+            if (!code || !verifier) {
+              setUrlError("Missing OAuth code/verifier");
+              await Browser.close().catch(() => {});
+              return;
+            }
+
+            const res = await fetch("/api/token", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ code, code_verifier: verifier, redirect_uri: "snippet://callback" }),
+            });
+
+            if (!res.ok) {
+              const body = await res.json().catch(() => ({}));
+              setUrlError(body?.detail || body?.error || `Token exchange failed (${res.status})`);
+              await Browser.close().catch(() => {});
+              return;
+            }
+
+            const data = await res.json();
+            const accessToken = data.access_token;
+            const refreshToken = data.refresh_token ?? null;
+            const expiresIn = data.expires_in ?? 3600;
+
+            localStorage.setItem(STORAGE_KEY, accessToken);
+            if (refreshToken) localStorage.setItem(STORAGE_REFRESH, refreshToken);
+            localStorage.setItem(STORAGE_EXPIRES, String(Date.now() + expiresIn * 1000));
+
+            setToken(accessToken);
+            setUrlError(null);
+            await Browser.close().catch(() => {});
+          } catch (e) {
+            setUrlError(String(e?.message || e || "OAuth callback error"));
+          }
+        };
+
+        const sub = await App.addListener("appUrlOpen", handler);
+        remove = () => sub?.remove?.();
+
+        // If the app was cold-started from the deep link (e.g. Chrome → snippet://callback),
+        // the appUrlOpen event can fire before JS listeners are registered.
+        // Read and process the launch URL to avoid missing the callback.
+        const launch = await App.getLaunchUrl().catch(() => null);
+        if (launch?.url) {
+          await handler({ url: launch.url });
+        }
+      } catch (e) {
+        console.warn("[nativeOAuth] failed to init deep link listener", e);
+      }
+    })();
+
+    return () => {
+      try {
+        if (remove) remove();
+      } catch {}
+    };
   }, []);
 
   useEffect(() => {
@@ -1161,7 +1254,43 @@ export default function Home() {
     const challenge = await generateCodeChallenge(verifier);
     // Pass verifier as state — Spotify echoes it back in the callback URL,
     // so no cross-origin storage (sessionStorage/cookies) is needed.
-    window.location.href = `/api/login?code_challenge=${encodeURIComponent(challenge)}&verifier=${encodeURIComponent(verifier)}`;
+    const isNative = isNativeCapacitor();
+    const platform = (() => {
+      try {
+        const c = window.Capacitor;
+        if (typeof c?.getPlatform === "function") return c.getPlatform();
+        return null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const qs = new URLSearchParams({
+      code_challenge: challenge,
+      verifier,
+      ...(isNative ? { redirect_uri: "snippet://callback" } : {}),
+    });
+
+    const loginUrl = `${window.location.origin}/api/login?${qs.toString()}`;
+    console.log("[goLogin]", {
+      isNative,
+      platform,
+      origin: window.location.origin,
+      loginUrl,
+    });
+
+    if (isNative) {
+      try {
+        const { Browser } = await import("@capacitor/browser");
+        console.log("[goLogin] opening native browser", { loginUrl });
+        await Browser.open({ url: loginUrl, presentationStyle: "fullscreen" });
+        return;
+      } catch (e) {
+        console.warn("[goLogin] Browser.open failed, falling back", e);
+      }
+    }
+
+    window.location.href = loginUrl;
   };
 
   const handleLogout = () => {
@@ -1354,6 +1483,7 @@ export default function Home() {
                 backgroundClip: "text",
               }}
             >
+            Tahir
               Jump to the best parts.
             </p>
             <p style={s.landingSubheadline}>

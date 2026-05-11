@@ -27,6 +27,14 @@ export async function GET(request) {
   const { searchParams } = new URL(request.url);
   const codeChallenge = searchParams.get("code_challenge");
   const verifier = searchParams.get("verifier");
+  const redirectOverride = searchParams.get("redirect_uri");
+  const redirectUri = redirectOverride || REDIRECT_URI;
+  console.log("[api/login] request", {
+    redirectOverride: redirectOverride || null,
+    redirectUri,
+    hasCodeChallenge: Boolean(codeChallenge),
+    hasVerifier: Boolean(verifier),
+  });
 
   if (!codeChallenge || !verifier) {
     return NextResponse.json(
@@ -38,7 +46,7 @@ export async function GET(request) {
   const params = new URLSearchParams({
     client_id: clientId,
     response_type: "code",
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     scope: SCOPES,
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
