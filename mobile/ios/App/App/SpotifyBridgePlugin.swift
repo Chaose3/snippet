@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 import Capacitor
 import SpotifyiOS
 
@@ -30,11 +31,51 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             name: NSNotification.Name("SpotifyCallbackURL"),
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillResignActive),
+            name: UIApplication.willResignActiveNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appDidBecomeActive),
+            name: UIApplication.didBecomeActiveNotification,
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    // MARK: - App lifecycle (Spotify iOS guidance: disconnect inactive, reconnect active)
+
+    @objc private func appWillResignActive() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let remote = self.appRemote, remote.isConnected else { return }
+            remote.disconnect()
+        }
+    }
+
+    @objc private func appDidBecomeActive() {
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self, let remote = self.appRemote else { return }
+            if remote.connectionParameters.accessToken != nil && !remote.isConnected {
+                remote.connect()
+            }
+        }
     }
 
     // MARK: - Plugin Methods
 
     @objc func connectAndPlay(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            self?.connectAndPlayOnMain(call)
+        }
+    }
+
+    private func connectAndPlayOnMain(_ call: CAPPluginCall) {
         guard let uri = call.getString("uri"), !uri.isEmpty else {
             call.reject("Missing uri")
             return
@@ -47,21 +88,36 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
 
         if appRemote == nil { appRemote = makeAppRemote() }
 
-        if appRemote!.isConnected {
+        guard let remote = appRemote else {
+            call.reject("Spotify App Remote unavailable")
+            pendingCall = nil
+            return
+        }
+
+        if remote.isConnected {
             playAfterConnect()
         } else {
-            appRemote!.authorizeAndPlayURI(uri)
+            remote.authorizeAndPlayURI(uri)
         }
     }
 
     @objc func connect(_ call: CAPPluginCall) {
-        pendingCall = call
-        pendingURI = nil
-        if appRemote == nil { appRemote = makeAppRemote() }
-        appRemote!.authorizeAndPlayURI("")
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+            self.pendingCall = call
+            self.pendingURI = nil
+            if self.appRemote == nil { self.appRemote = self.makeAppRemote() }
+            self.appRemote?.authorizeAndPlayURI("")
+        }
     }
 
     @objc func seek(_ call: CAPPluginCall) {
+        DispatchQueue.main.async { [weak self] in
+            self?.seekOnMain(call)
+        }
+    }
+
+    private func seekOnMain(_ call: CAPPluginCall) {
         guard let playerAPI = appRemote?.playerAPI else {
             call.reject("Not connected to Spotify")
             return
@@ -74,14 +130,18 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     }
 
     @objc func pause(_ call: CAPPluginCall) {
-        appRemote?.playerAPI?.pause { _, error in
-            error != nil ? call.reject(error!.localizedDescription) : call.resolve()
+        DispatchQueue.main.async { [weak self] in
+            self?.appRemote?.playerAPI?.pause { _, error in
+                error != nil ? call.reject(error!.localizedDescription) : call.resolve()
+            }
         }
     }
 
     @objc func resume(_ call: CAPPluginCall) {
-        appRemote?.playerAPI?.resume { _, error in
-            error != nil ? call.reject(error!.localizedDescription) : call.resolve()
+        DispatchQueue.main.async { [weak self] in
+            self?.appRemote?.playerAPI?.resume { _, error in
+                error != nil ? call.reject(error!.localizedDescription) : call.resolve()
+            }
         }
     }
 
@@ -94,6 +154,12 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
     // MARK: - URL Callback (from AppDelegate)
 
     @objc func handleSpotifyCallback(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.handleSpotifyCallbackOnMain(notification)
+        }
+    }
+
+    private func handleSpotifyCallbackOnMain(_ notification: Notification) {
         guard let url = notification.object as? URL else { return }
         let parameters = appRemote?.authorizationParameters(from: url)
         if let token = parameters?[SPTAppRemoteAccessTokenKey] {
@@ -121,20 +187,30 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             return
         }
         let posMs = pendingPositionMs
-        appRemote?.playerAPI?.play(uri, callback: { [weak self] _, error in
+        appRemote?.playerAPI?.play(uri, asRadio: false) { [weak self] _, error in
             guard let self = self else { return }
             if let error = error {
                 self.pendingCall?.reject(error.localizedDescription)
                 self.pendingCall = nil
                 return
             }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                self.appRemote?.playerAPI?.seek(toPosition: posMs) { _, _ in
-                    self.pendingCall?.resolve()
+            if posMs <= 0 {
+                self.pendingCall?.resolve()
+                self.pendingCall = nil
+                return
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.85) { [weak self] in
+                guard let self = self else { return }
+                self.appRemote?.playerAPI?.seek(toPosition: posMs) { _, seekError in
+                    if let seekError = seekError {
+                        self.pendingCall?.reject(seekError.localizedDescription)
+                    } else {
+                        self.pendingCall?.resolve()
+                    }
                     self.pendingCall = nil
                 }
             }
-        })
+        }
     }
 }
 

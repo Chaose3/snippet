@@ -3,7 +3,7 @@
 	"appName": "Snippet",
 	"webDir": "www",
 	"server": {
-		"url": "http://192.168.88.206:3000",
+		"url": "https://snippet-azure.vercel.app",
 		"cleartext": true,
 		"allowNavigation": [
 			"accounts.spotify.com"
@@ -14,6 +14,7 @@
 	},
 	"packageClassList": [
 		"AppPlugin",
-		"CAPBrowserPlugin"
+		"CAPBrowserPlugin",
+		"SpotifyBridgePlugin"
 	]
 }

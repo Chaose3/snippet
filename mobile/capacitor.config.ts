@@ -25,7 +25,7 @@ const devServerUrl =
   process.env.CAPACITOR_SERVER_URL?.trim() ||
   '';
 
-const config: CapacitorConfig = {
+const config = {
   appId: 'com.snippet.app',
   appName: 'Snippet',
   // Capacitor sync expects a webDir with an index.html.
@@ -43,6 +43,8 @@ const config: CapacitorConfig = {
   ios: {
     scheme: 'snippet',
   },
-};
+  // Local native plugin (must match class name); keep core plugins listed so sync does not drop them.
+  packageClassList: ['AppPlugin', 'CAPBrowserPlugin', 'SpotifyBridgePlugin'],
+} as CapacitorConfig;
 
 export default config;

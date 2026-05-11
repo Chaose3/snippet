@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { App } from "@capacitor/app";
 import { getStoredToken } from "../lib/auth-storage";
+import { isNativeCapacitor } from "../lib/capacitor/platform";
 import { getPlayerState, getQueue } from "../lib/snippet";
 
 export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
@@ -43,7 +45,13 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
     if (!token) return;
 
     const run = async () => {
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
+      if (
+        typeof document !== "undefined" &&
+        document.visibilityState === "hidden" &&
+        !isNativeCapacitor()
+      ) {
+        return;
+      }
       await refreshPlayerSnapshot();
     };
 
@@ -53,9 +61,23 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
       if (typeof document !== "undefined" && document.visibilityState === "visible") run();
     };
     document.addEventListener("visibilitychange", onVis);
+
+    let appListenerRemoved = false;
+    let appListenerHandle = null;
+    if (isNativeCapacitor()) {
+      App.addListener("appStateChange", ({ isActive }) => {
+        if (isActive) refreshPlayerSnapshot();
+      }).then((handle) => {
+        if (!appListenerRemoved) appListenerHandle = handle;
+        else handle.remove();
+      });
+    }
+
     return () => {
+      appListenerRemoved = true;
       clearInterval(id);
       document.removeEventListener("visibilitychange", onVis);
+      appListenerHandle?.remove();
     };
   }, [token, refreshPlayerSnapshot]);
 
