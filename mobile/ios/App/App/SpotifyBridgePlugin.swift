@@ -229,10 +229,23 @@ extension SpotifyBridgePlugin: SPTAppRemoteDelegate {
             pendingCall = nil
             return
         }
-        if error.code == SPTAppRemoteErrorCode.spotifyNotActiveError.rawValue {
-            pendingCall?.reject("SPOTIFY_NOT_INSTALLED")
-        } else if error.code == SPTAppRemoteErrorCode.notAuthorizedError.rawValue {
-            pendingCall?.reject("SPOTIFY_NOT_PREMIUM")
+        // SPTAppRemoteCommon.h (current spotify/ios-sdk). Legacy cases spotifyNotActiveError / notAuthorizedError were removed.
+        let bgWakeupFailed = -1000
+        let connectionAttemptFailed = -1001
+        let connectionTerminated = -1002
+
+        if error.domain == SPTAppRemoteErrorDomain {
+            switch error.code {
+            case bgWakeupFailed, connectionAttemptFailed, connectionTerminated:
+                pendingCall?.reject("SPOTIFY_NOT_INSTALLED")
+            default:
+                let lower = error.localizedDescription.lowercased()
+                if lower.contains("premium") || lower.contains("not authorized") || lower.contains("403") {
+                    pendingCall?.reject("SPOTIFY_NOT_PREMIUM")
+                } else {
+                    pendingCall?.reject(error.localizedDescription)
+                }
+            }
         } else {
             pendingCall?.reject(error.localizedDescription)
         }

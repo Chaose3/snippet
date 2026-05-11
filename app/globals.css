@@ -6,6 +6,9 @@ html {
   background: #08050c;
   scrollbar-color: #9D4EDD #08050c;
   scrollbar-width: thin;
+  overflow-x: clip;
+  width: 100%;
+  min-height: 100dvh;
 }
 
 body {
@@ -16,7 +19,10 @@ body {
     radial-gradient(circle at 20% 120%, rgba(60, 9, 108, 0.28), transparent 34%),
     linear-gradient(180deg, #0a060f 0%, #08050c 100%);
   color: #f0f0f5;
-  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: clip;
+  width: 100%;
+  position: relative;
 }
 
 input[type="range"] {

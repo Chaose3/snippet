@@ -1,16 +1,30 @@
 export const ORANGE = "#E0AAFF";
 export const GRAD = "linear-gradient(135deg, #E0AAFF 0%, #9D4EDD 34%, #5A189A 72%, #3c096c 100%)";
 
+/** Centered fixed chrome: avoid `100vw` alone on iOS (notch + overscroll horizontal drag). */
+export const SAFE_FIXED_MAX_W =
+  "min(560px, calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 1.5rem))";
+
 export const s = {
   main: {
-    padding: "1.5rem", maxWidth: 600, margin: "0 auto",
-    paddingBottom: "7rem",
+    maxWidth: 600,
+    margin: "0 auto",
+    width: "100%",
+    minWidth: 0,
+    paddingTop: "calc(1.5rem + env(safe-area-inset-top, 0px))",
+    paddingLeft: "calc(1.5rem + env(safe-area-inset-left, 0px))",
+    paddingRight: "calc(1.5rem + env(safe-area-inset-right, 0px))",
+    paddingBottom: "calc(7rem + env(safe-area-inset-bottom, 0px))",
   },
   centeredLoaderScreen: {
-    minHeight: "100vh",
+    minHeight: "100dvh",
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
+    paddingLeft: "env(safe-area-inset-left, 0px)",
+    paddingRight: "env(safe-area-inset-right, 0px)",
+    paddingTop: "env(safe-area-inset-top, 0px)",
+    paddingBottom: "env(safe-area-inset-bottom, 0px)",
   },
   sectionLoader: {
     display: "flex",
@@ -978,14 +992,15 @@ export const s = {
   // ── Bottom Nav ──
   bottomNav: {
     position: "fixed",
-    bottom: "0.8rem",
+    bottom: "calc(0.8rem + env(safe-area-inset-bottom, 0px))",
     left: "50%",
     transform: "translateX(-50%)",
     display: "flex",
     alignItems: "center",
     justifyContent: "space-around",
     gap: "1.15rem",
-    width: "min(calc(100vw - 1.5rem), 560px)",
+    width: SAFE_FIXED_MAX_W,
+    maxWidth: "100%",
     padding: "0.72rem 1.1rem 0.68rem",
     background: "linear-gradient(180deg, rgba(10, 7, 16, 0.56) 0%, rgba(8, 6, 12, 0.82) 52%, rgba(6, 4, 9, 0.9) 100%)",
     backdropFilter: "blur(34px) saturate(1.16)",
@@ -1013,9 +1028,10 @@ export const s = {
   miniPlayerShell: {
     position: "fixed",
     left: "50%",
-    bottom: "4.72rem",
+    bottom: "calc(4.72rem + env(safe-area-inset-bottom, 0px))",
     transform: "translateX(-50%)",
-    width: "min(calc(100vw - 1.5rem), 560px)",
+    width: SAFE_FIXED_MAX_W,
+    maxWidth: "100%",
     zIndex: 49,
   },
   miniPlayerBar: {
@@ -1249,26 +1265,45 @@ export const s = {
 
   // ── Track Detail Modal ──
   modalOverlay: {
-    position: "fixed", inset: 0,
+    position: "fixed",
+    inset: 0,
+    /* Top inset lives on modalSheet + sticky modalHeader so Snip/header respect notch when scrolling (WKWebView sticky vs padding mismatch). */
+    paddingTop: 0,
+    paddingBottom: "env(safe-area-inset-bottom, 0px)",
+    paddingLeft: "env(safe-area-inset-left, 0px)",
+    paddingRight: "env(safe-area-inset-right, 0px)",
     background: "radial-gradient(circle at 22% 8%, rgba(255, 170, 224, 0.18), transparent 24%), radial-gradient(circle at 78% 6%, rgba(170, 112, 255, 0.16), transparent 26%), rgba(0,0,0,0.82)",
     backdropFilter: "blur(20px)",
     zIndex: 100,
-    display: "flex", alignItems: "stretch", justifyContent: "center",
+    display: "flex",
+    alignItems: "stretch",
+    justifyContent: "center",
     overflowY: "auto",
+    overflowX: "hidden",
+    overscrollBehaviorX: "none",
+    WebkitOverflowScrolling: "touch",
   },
   modalSheet: {
-    width: "100%", maxWidth: 600,
+    width: "100%",
+    maxWidth: 600,
+    minWidth: 0,
+    flex: "1 1 auto",
     background: "linear-gradient(180deg, rgba(49, 28, 72, 0.96) 0%, rgba(58, 33, 88, 0.95) 18%, rgba(42, 24, 64, 0.94) 34%, rgba(19, 12, 30, 0.96) 60%, rgba(9, 6, 14, 0.98) 84%)",
     minHeight: "100%",
-    padding: "0 1.25rem 7rem",
-    display: "flex", flexDirection: "column",
+    padding: "env(safe-area-inset-top, 0px) 1.25rem calc(7rem + env(safe-area-inset-bottom, 0px))",
+    display: "flex",
+    flexDirection: "column",
     position: "relative",
     overflow: "hidden",
+    overflowX: "hidden",
+    touchAction: "pan-y",
   },
   modalAura: {
     position: "absolute",
-    inset: "-8% -4% auto",
-    height: "60vh",
+    left: 0,
+    right: 0,
+    top: "-6%",
+    height: "58vh",
     background: "radial-gradient(circle at 16% 18%, rgba(255, 163, 216, 0.52), transparent 36%), radial-gradient(circle at 84% 10%, rgba(191, 120, 255, 0.48), transparent 38%), radial-gradient(circle at 52% 24%, rgba(150, 92, 225, 0.26), transparent 44%), linear-gradient(145deg, rgba(255, 140, 210, 0.18) 0%, rgba(151, 91, 229, 0.24) 56%, rgba(15, 8, 20, 0.01) 100%)",
     filter: "blur(22px)",
     pointerEvents: "none",
@@ -1276,11 +1311,15 @@ export const s = {
   modalViewport: {
     position: "relative",
     zIndex: 1,
+    minWidth: 0,
+    width: "100%",
+    overflowX: "hidden",
   },
   modalHeader: {
     display: "flex", alignItems: "center", justifyContent: "space-between",
     padding: "1.25rem 0 0.7rem",
-    position: "sticky", top: 0,
+    position: "sticky",
+    top: "env(safe-area-inset-top, 0px)",
     background: "linear-gradient(180deg, rgba(47, 28, 71, 0.08) 0%, rgba(47, 28, 71, 0) 100%)",
     backdropFilter: "blur(6px)",
     zIndex: 1,
@@ -1402,6 +1441,9 @@ export const s = {
     minHeight: "68vh",
     display: "flex",
     flexDirection: "column",
+    minWidth: 0,
+    width: "100%",
+    overflowX: "hidden",
   },
   modalMetaRow: {
     display: "flex",
@@ -1409,6 +1451,8 @@ export const s = {
     justifyContent: "flex-start",
     gap: "1rem",
     marginBottom: "1.8rem",
+    minWidth: 0,
+    width: "100%",
   },
   modalDiscStage: {
     position: "relative",
@@ -1419,6 +1463,9 @@ export const s = {
     minHeight: 350,
     marginBottom: "2rem",
     overflow: "hidden",
+    width: "100%",
+    maxWidth: "100%",
+    touchAction: "pan-y",
   },
   modalSideArt: {
     position: "absolute",
@@ -1474,7 +1521,8 @@ export const s = {
     background: "linear-gradient(145deg, rgba(224,170,255,0.34) 0%, rgba(60,9,108,0.7) 100%)",
   },
   modalDiscOuter: {
-    width: "min(78vw, 360px)",
+    width: "min(360px, calc(100% - 2.5rem), calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 3rem))",
+    maxWidth: "100%",
     aspectRatio: "1",
     borderRadius: "50%",
     position: "relative",
@@ -1568,11 +1616,15 @@ export const s = {
     letterSpacing: "0.02em",
   },
   modalTrackName: {
-    margin: "0 0 0.35rem", fontSize: "3rem", fontWeight: 300,
+    margin: "0 0 0.35rem",
+    fontSize: "clamp(1.35rem, 5.5vw, 3rem)",
+    fontWeight: 300,
     letterSpacing: "-0.03em",
     color: "#fff8ff",
-    maxWidth: "72vw",
-    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+    maxWidth: "100%",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
   },
   modalArtist: {
     margin: 0, color: "rgba(255,255,255,0.74)", fontSize: "1.05rem", fontWeight: 400,
@@ -1675,6 +1727,10 @@ export const s = {
   modalMenuBackdrop: {
     position: "fixed",
     inset: 0,
+    paddingTop: "env(safe-area-inset-top, 0px)",
+    paddingLeft: "env(safe-area-inset-left, 0px)",
+    paddingRight: "env(safe-area-inset-right, 0px)",
+    paddingBottom: "env(safe-area-inset-bottom, 0px)",
     background: "linear-gradient(180deg, rgba(0,0,0,0.06) 0%, rgba(0,0,0,0.32) 100%)",
     backdropFilter: "blur(8px)",
     WebkitBackdropFilter: "blur(8px)",
@@ -1682,6 +1738,8 @@ export const s = {
     alignItems: "flex-end",
     justifyContent: "center",
     zIndex: 120,
+    overflowX: "hidden",
+    overscrollBehaviorX: "none",
   },
   modalMenuSheet: {
     width: "100%",
