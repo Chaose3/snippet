@@ -2053,7 +2053,7 @@ export default function Home() {
                       <span className="modal-clip-btn__icon-wrap">
                         <img src="/snippet-logo.png" alt="" className="modal-clip-btn__icon" />
                       </span>
-                      <span className="modal-clip-btn__text">Clip</span>
+                      <span className="modal-clip-btn__text">Snip</span>
                     </button>
                     <div style={s.modalClipNoticeWrap}>
                       <span

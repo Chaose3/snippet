@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
+const ALLOWED_REDIRECT_URIS = new Set([REDIRECT_URI, "snippet://callback"]);
 
 /**
  * Exchange authorization code for tokens (PKCE — no client secret).
@@ -33,6 +34,9 @@ export async function POST(request) {
   }
   if (!codeVerifier || typeof codeVerifier !== "string") {
     return NextResponse.json({ error: "Missing code_verifier" }, { status: 400 });
+  }
+  if (!ALLOWED_REDIRECT_URIS.has(redirectUri)) {
+    return NextResponse.json({ error: "Invalid redirect_uri" }, { status: 400 });
   }
 
   const params = new URLSearchParams({
