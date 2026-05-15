@@ -31,6 +31,7 @@ Run after refactors touching auth, playback, search, or Capacitor.
 - [ ] Connect Spotify opens in-app browser; after approve, returns via `snippet://callback`; browser closes; logged in.
 - [ ] Cold start: open app via deep link callback if applicable — `getLaunchUrl` path still receives code.
 - [ ] If `SpotifyBridge` is present: play from Snippet invokes native playback; pause/resume/seek work.
+- [ ] With Spotify installed but idle: play opens **Spotify app** via Branch content link (not `open.spotify.com` in-app browser).
 - [ ] Without bridge: REST playback path still behaves (external device).
 
 ## Performance smoke
