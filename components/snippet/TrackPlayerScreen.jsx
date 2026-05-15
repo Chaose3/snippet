@@ -1,18 +1,20 @@
 "use client";
 
-import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { buildTrackDetailModalModel } from "../../lib/track-detail-modal-model";
 import { getTrackById } from "../../lib/snippet";
+import { getPlayerRouteHintTrack } from "../../lib/player-route-hint";
 import { useAppPlayback } from "../../contexts/AppPlaybackContext";
+import { usePlaybackPosition } from "../../contexts/PlaybackPositionContext";
 import { s } from "./homeStyles";
 import { PlayerRouteSkeleton } from "./PlayerRouteSkeleton";
-import { TrackDetailModalHeader } from "./TrackDetailModalHeader";
 import { TrackDetailModalHero } from "./TrackDetailModalHero";
 import { TrackDetailModalQueue } from "./TrackDetailModalQueue";
 import { TrackDetailModalOverflowMenu } from "./TrackDetailModalOverflowMenu";
 import { TrackDetailModalSnippetsPanel } from "./TrackDetailModalSnippetsPanel";
 
+/** Resolves track + shows skeleton without subscribing to high-frequency playback position. */
 export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
   const router = useRouter();
   const pb = useAppPlayback();
@@ -20,50 +22,29 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
   const [resolvedTrack, setResolvedTrack] = useState(null);
   const [loadError, setLoadError] = useState(null);
   const [loadingTrack, setLoadingTrack] = useState(true);
+  const lastTrackIdRef = useRef(null);
 
   const {
-    playerState,
     trackLookup,
-    allTimestamps,
-    playlistTracks,
-    queueTracks,
-    fallbackUpcomingTracks,
-    previousPlayerTrack,
-    selectedSnippetIndexByTrack,
-    estimatedPos,
-    labelInput,
-    setLabelInput,
-    snippetModeEnabled,
-    setSnippetModeEnabled,
-    modalMenuOpen,
-    setModalMenuOpen,
-    modalMenuSnippetsOpen,
-    setModalMenuSnippetsOpen,
-    modalClipPressed,
-    setModalClipPressed,
-    modalClipSaved,
-    modalClipNotice,
-    handleModalClip,
-    handleShuffle,
-    handleSkipPrevious,
-    handleSkipNext,
-    handlePlayPause,
-    handleRepeatCycle,
-    handleSelectSnippet,
-    handleSaveTimestamp,
-    jump,
-    resolvePlaybackPosition,
-    playTrackWithMode,
-    handleModalRingPointerDown,
-    handleModalRingPointerMove,
-    handleModalRingPointerUp,
+    playerState,
     recentlyPlayedTracks,
     spotifyResults,
     withFreshToken,
     token,
+    playerNavPrimedTrackRef,
   } = pb;
 
-  const playerNavPrimedTrackRef = pb.playerNavPrimedTrackRef;
+  const hintTrack = useMemo(
+    () =>
+      getPlayerRouteHintTrack(trackId, {
+        primedRef: playerNavPrimedTrackRef,
+        trackLookup,
+        playerState,
+        recentlyPlayedTracks,
+        spotifyResults,
+      }),
+    [trackId, trackLookup, playerState, recentlyPlayedTracks, spotifyResults, playerNavPrimedTrackRef]
+  );
 
   useLayoutEffect(() => {
     if (!trackId) return;
@@ -73,6 +54,7 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
       setResolvedTrack(primed);
       setLoadError(null);
       setLoadingTrack(false);
+      lastTrackIdRef.current = trackId;
       return;
     }
     const fromLookup = trackLookup[trackId];
@@ -80,6 +62,13 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
       setResolvedTrack(fromLookup);
       setLoadError(null);
       setLoadingTrack(false);
+      lastTrackIdRef.current = trackId;
+      return;
+    }
+    if (lastTrackIdRef.current !== trackId) {
+      lastTrackIdRef.current = trackId;
+      setResolvedTrack(null);
+      setLoadingTrack(true);
     }
   }, [trackId, trackLookup, playerNavPrimedTrackRef]);
 
@@ -166,6 +155,99 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
     };
   }, [trackId, trackLookup, playerState, recentlyPlayedTracks, spotifyResults, token, withFreshToken]);
 
+  const { setPlayerViewTrack } = pb;
+
+  const syncViewToTrack = useCallback(
+    (track) => {
+      if (!track?.id) return;
+      lastTrackIdRef.current = track.id;
+      setResolvedTrack(track);
+      setLoadingTrack(false);
+      setLoadError(null);
+      setPlayerViewTrack(track);
+    },
+    [setPlayerViewTrack]
+  );
+
+  if (!token) {
+    return null;
+  }
+
+  const primedMatchesRoute =
+    playerNavPrimedTrackRef?.current?.id === trackId ||
+    resolvedTrack?.id === trackId ||
+    playerState?.id === trackId;
+  const showSkeleton = loadingTrack && !primedMatchesRoute;
+  if (showSkeleton) {
+    return <PlayerRouteSkeleton hintTrack={hintTrack ?? resolvedTrack} />;
+  }
+
+  if (loadError || !resolvedTrack) {
+    return (
+      <div style={{ ...s.playerPageRoot, padding: "2rem 1.25rem", textAlign: "center" }}>
+        <p style={{ color: "rgba(255,255,255,0.85)", marginBottom: "1rem" }}>{loadError || "Unable to show this track."}</p>
+        <button type="button" style={s.btnPrimary} onClick={() => router.push("/")}>
+          Back home
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <TrackPlayerScreenBody
+      trackId={trackId}
+      resolvedTrack={resolvedTrack}
+      syncViewToTrack={syncViewToTrack}
+    />
+  );
+});
+
+const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
+  trackId,
+  resolvedTrack,
+  syncViewToTrack,
+}) {
+  const router = useRouter();
+  const pb = useAppPlayback();
+  const { estimatedPos } = usePlaybackPosition();
+
+  const {
+    playerState,
+    trackLookup,
+    allTimestamps,
+    playlistTracks,
+    queueTracks,
+    fallbackUpcomingTracks,
+    previousPlayerTrack,
+    selectedSnippetIndexByTrack,
+    labelInput,
+    setLabelInput,
+    snippetModeEnabled,
+    setSnippetModeEnabled,
+    modalMenuOpen,
+    setModalMenuOpen,
+    modalMenuSnippetsOpen,
+    setModalMenuSnippetsOpen,
+    modalClipPressed,
+    setModalClipPressed,
+    modalClipSaved,
+    modalClipNotice,
+    handleModalClip,
+    handleShuffle,
+    handleSkipPrevious,
+    handleSkipNext,
+    handlePlayPause,
+    handleRepeatCycle,
+    handleSelectSnippet,
+    handleSaveTimestamp,
+    jump,
+    resolvePlaybackPosition,
+    playTrackWithMode,
+    handleModalRingPointerDown,
+    handleModalRingPointerMove,
+    handleModalRingPointerUp,
+  } = pb;
+
   const mergedLookup = useMemo(() => {
     if (!resolvedTrack?.id) return trackLookup;
     return { ...trackLookup, [resolvedTrack.id]: resolvedTrack };
@@ -173,20 +255,18 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
 
   const model = useMemo(
     () =>
-      resolvedTrack
-        ? buildTrackDetailModalModel({
-            selectedTrack: resolvedTrack,
-            playerState,
-            trackLookup: mergedLookup,
-            allTimestamps,
-            playlistTracks,
-            queueTracks,
-            fallbackUpcomingTracks,
-            previousPlayerTrack,
-            selectedSnippetIndexByTrack,
-            estimatedPos,
-          })
-        : null,
+      buildTrackDetailModalModel({
+        selectedTrack: resolvedTrack,
+        playerState,
+        trackLookup: mergedLookup,
+        allTimestamps,
+        playlistTracks,
+        queueTracks,
+        fallbackUpcomingTracks,
+        previousPlayerTrack,
+        selectedSnippetIndexByTrack,
+        estimatedPos,
+      }),
     [
       resolvedTrack,
       playerState,
@@ -202,58 +282,95 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
   );
 
   const handleDismiss = useCallback(() => {
-    setModalMenuOpen(false);
-    setModalMenuSnippetsOpen(false);
-    if (typeof window !== "undefined" && window.history.length > 1) {
-      router.back();
-    } else {
-      router.push("/");
-    }
-  }, [router, setModalMenuOpen, setModalMenuSnippetsOpen]);
+    pb.closePlayer?.();
+  }, [pb]);
 
   const navigateToTrack = useCallback(
     (track) => {
       if (!track?.id) return;
-      if (pb.playerNavPrimedTrackRef) pb.playerNavPrimedTrackRef.current = track;
-      router.prefetch(`/player/${track.id}`);
-      router.push(`/player/${track.id}`);
+      pb.prefetchPlayerRoute?.();
+      syncViewToTrack(track);
     },
-    [router, pb.playerNavPrimedTrackRef]
+    [pb, syncViewToTrack]
   );
+
+  const prevPlayingIdRef = useRef(playerState?.id ?? null);
+  useEffect(() => {
+    const prevPlaying = prevPlayingIdRef.current;
+    const nowPlaying = playerState?.id ?? null;
+    prevPlayingIdRef.current = nowPlaying;
+    if (!nowPlaying || nowPlaying === trackId) return;
+    if (prevPlaying !== trackId) return;
+    const fromLookup = trackLookup[nowPlaying];
+    const track =
+      fromLookup ??
+      ({
+        id: playerState.id,
+        name: playerState.name,
+        uri: playerState.uri,
+        artists: playerState.artists,
+        albumArt: playerState.albumArt,
+        durationMs: playerState.durationMs,
+      });
+    syncViewToTrack(track);
+  }, [
+    playerState?.id,
+    playerState?.name,
+    playerState?.uri,
+    playerState?.artists,
+    playerState?.albumArt,
+    playerState?.durationMs,
+    trackId,
+    trackLookup,
+    syncViewToTrack,
+  ]);
 
   const closeAfterSnippetPlay = useCallback(() => {
     router.push("/");
   }, [router]);
 
-  if (!token) {
-    return null;
-  }
+  const isCurrentTrack = model?.isCurrentTrack ?? false;
+  const nextTrack = model?.nextTrack ?? null;
+  const previousTrack = model?.previousTrack ?? null;
 
-  const trackMismatch = Boolean(trackId && resolvedTrack?.id && resolvedTrack.id !== trackId);
-  if (loadingTrack || trackMismatch) {
-    return <PlayerRouteSkeleton />;
-  }
+  const onRequestNext = useCallback(async () => {
+    if (isCurrentTrack) {
+      if (nextTrack) syncViewToTrack(nextTrack);
+      await handleSkipNext();
+      return;
+    }
+    if (nextTrack) {
+      syncViewToTrack(nextTrack);
+      playTrackWithMode(nextTrack);
+      return;
+    }
+    await handleSkipNext();
+  }, [isCurrentTrack, nextTrack, handleSkipNext, syncViewToTrack, playTrackWithMode]);
 
-  if (loadError || !resolvedTrack || !model) {
-    return (
-      <div style={{ ...s.playerPageRoot, padding: "2rem 1.25rem", textAlign: "center" }}>
-        <p style={{ color: "rgba(255,255,255,0.85)", marginBottom: "1rem" }}>{loadError || "Unable to show this track."}</p>
-        <button type="button" style={s.btnPrimary} onClick={() => router.push("/")}>
-          Back home
-        </button>
-      </div>
-    );
+  const onRequestPrevious = useCallback(async () => {
+    if (isCurrentTrack) {
+      if (previousTrack) syncViewToTrack(previousTrack);
+      await handleSkipPrevious();
+      return;
+    }
+    if (previousTrack) {
+      syncViewToTrack(previousTrack);
+      playTrackWithMode(previousTrack);
+      return;
+    }
+    await handleSkipPrevious();
+  }, [isCurrentTrack, previousTrack, handleSkipPrevious, syncViewToTrack, playTrackWithMode]);
+
+  if (!model) {
+    return <PlayerRouteSkeleton hintTrack={resolvedTrack} />;
   }
 
   const {
     activeModalTrack,
-    isCurrentTrack,
     tss,
     selectedSnippetIndex,
     selectedSnippet,
     upcomingTracks,
-    previousTrack,
-    nextTrack,
     modalProgressMs,
     modalProgressPercent,
     modalProgressArcPath,
@@ -262,17 +379,6 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
   return (
     <div style={s.playerPageRoot}>
       <div style={s.playerSheet}>
-        <div style={s.playerTopChrome}>
-          <TrackDetailModalHeader
-            onDismiss={handleDismiss}
-            estimatedPos={estimatedPos}
-            modalClipPressed={modalClipPressed}
-            setModalClipPressed={setModalClipPressed}
-            modalClipSaved={modalClipSaved}
-            modalClipNotice={modalClipNotice}
-            handleModalClip={handleModalClip}
-          />
-        </div>
 
         <div style={s.playerScrollPane}>
           <div style={s.playerScrollInner}>
@@ -298,6 +404,15 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
                 handleRepeatCycle={handleRepeatCycle}
                 jump={jump}
                 resolvePlaybackPosition={resolvePlaybackPosition}
+                onDismiss={handleDismiss}
+                estimatedPos={estimatedPos}
+                modalClipPressed={modalClipPressed}
+                setModalClipPressed={setModalClipPressed}
+                modalClipSaved={modalClipSaved}
+                modalClipNotice={modalClipNotice}
+                handleModalClip={handleModalClip}
+                onRequestNext={onRequestNext}
+                onRequestPrevious={onRequestPrevious}
               />
             </div>
 

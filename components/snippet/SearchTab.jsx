@@ -17,12 +17,16 @@ export const SearchTab = memo(function SearchTab({
   onPlayTrackWithMode,
   jump,
 }) {
+  const trimmed = searchQuery.trim();
+  const showResults = Boolean(trimmed);
+
   return (
-    <div style={s.searchTab}>
+    <div style={s.searchPage}>
       <p style={s.tabHeading}>Search</p>
+
       <div style={s.searchOrbWrap}>
         <div className="search-orb-container">
-          <div className="gooey-background-layer">
+          <div className="gooey-background-layer" aria-hidden>
             <div className="blob blob-1" />
             <div className="blob blob-2" />
             <div className="blob blob-3" />
@@ -44,18 +48,32 @@ export const SearchTab = memo(function SearchTab({
               </svg>
             </div>
             <input
+              id="spotify-search-input"
               type="text"
+              enterKeyHint="search"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
               className="modern-input"
               placeholder="Search songs or artists on Spotify"
               value={searchQuery}
               onChange={(e) => onSearchQueryChange(e.target.value)}
-              autoFocus
             />
-            <div className="focus-indicator" />
+            {searchQuery ? (
+              <button
+                type="button"
+                className="search-orb-clear"
+                aria-label="Clear search"
+                onClick={() => onSearchQueryChange("")}
+              >
+                ×
+              </button>
+            ) : null}
+            <div className="focus-indicator" aria-hidden />
           </div>
-          <svg className="gooey-svg-filter" xmlns="http://www.w3.org/2000/svg">
+          <svg className="gooey-svg-filter" xmlns="http://www.w3.org/2000/svg" aria-hidden>
             <defs>
-              <filter id="enhanced-goo">
+              <filter id="snippet-search-goo">
                 <feGaussianBlur in="SourceGraphic" stdDeviation={12} result="blur" />
                 <feColorMatrix
                   in="blur"
@@ -69,78 +87,83 @@ export const SearchTab = memo(function SearchTab({
           </svg>
         </div>
       </div>
-      {!searchQuery ? null : searchLoading ? (
-        <div style={{ ...s.sectionLoader, marginTop: "3rem" }}>
-          <ThemedLoader size={0.38} label="Searching Spotify" />
-        </div>
-      ) : spotifyResults.length === 0 ? (
-        <p style={{ ...s.muted, textAlign: "center", marginTop: "3rem" }}>No results for &quot;{searchQuery}&quot;</p>
-      ) : (
-        <div style={s.libraryBody}>
-          {spotifyResults.map((track) => {
-            const tss = allTimestamps[track.id] || [];
-            return (
-              <div key={track.id} style={s.trackRow}>
-                <div
-                  role="button"
-                  tabIndex={0}
-                  className="player-open-target"
-                  style={{ ...s.trackLeft, cursor: "pointer" }}
-                  onPointerEnter={() => onPrefetchPlayer?.(track.id)}
-                  onClick={() => onOpenTrack(track)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      onOpenTrack(track);
-                    }
-                  }}
-                >
-                  {track.albumArt ? (
-                    <img src={track.albumArt} alt="" style={s.trackArt} />
-                  ) : (
-                    <div style={s.trackArtFallback} />
-                  )}
-                  <div style={s.trackMeta}>
-                    <span style={s.trackRowName}>{track.name}</span>
-                    <span style={s.trackRowArtist}>{track.artists}</span>
-                    {tss.length > 0 && (
-                      <div style={s.chipRow}>
-                        {tss.map((ts, i) => (
-                          <button
-                            key={i}
-                            type="button"
-                            style={s.chip}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              jump(track, ts.positionMs, track);
-                            }}
-                            title={ts.label}
-                          >
-                            {ts.label}
-                          </button>
-                        ))}
-                      </div>
+
+      <div style={s.searchResultsPane}>
+        {!showResults ? (
+          <p style={s.searchHint}>Find any track on Spotify to play or open in the player.</p>
+        ) : searchLoading ? (
+          <div style={s.sectionLoader}>
+            <ThemedLoader size={0.38} label="Searching Spotify" />
+          </div>
+        ) : spotifyResults.length === 0 ? (
+          <p style={s.searchEmpty}>No results for &quot;{trimmed}&quot;</p>
+        ) : (
+          <div style={s.libraryBody}>
+            {spotifyResults.map((track) => {
+              const tss = allTimestamps[track.id] || [];
+              return (
+                <div key={track.id} style={s.trackRow}>
+                  <div
+                    role="button"
+                    tabIndex={0}
+                    className="player-open-target"
+                    style={{ ...s.trackLeft, cursor: "pointer" }}
+                    onPointerEnter={() => onPrefetchPlayer?.(track.id)}
+                    onClick={() => onOpenTrack(track)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onOpenTrack(track);
+                      }
+                    }}
+                  >
+                    {track.albumArt ? (
+                      <img src={track.albumArt} alt="" style={s.trackArt} />
+                    ) : (
+                      <div style={s.trackArtFallback} />
                     )}
+                    <div style={s.trackMeta}>
+                      <span style={s.trackRowName}>{track.name}</span>
+                      <span style={s.trackRowArtist}>{track.artists}</span>
+                      {tss.length > 0 && (
+                        <div style={s.chipRow}>
+                          {tss.map((ts, i) => (
+                            <button
+                              key={i}
+                              type="button"
+                              style={s.chip}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                jump(track, ts.positionMs, track);
+                              }}
+                              title={ts.label}
+                            >
+                              {ts.label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <div style={s.trackRight}>
+                    <span style={s.trackDuration}>{formatMs(track.durationMs)}</span>
+                    <button
+                      type="button"
+                      style={s.playTrackBtn}
+                      onClick={() => onPlayTrackWithMode(track)}
+                      title={snippetModeEnabled ? "Play selected snippet" : "Play from start"}
+                    >
+                      <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
+                        <path d="M8 5v14l11-7z" />
+                      </svg>
+                    </button>
                   </div>
                 </div>
-                <div style={s.trackRight}>
-                  <span style={s.trackDuration}>{formatMs(track.durationMs)}</span>
-                  <button
-                    type="button"
-                    style={s.playTrackBtn}
-                    onClick={() => onPlayTrackWithMode(track)}
-                    title={snippetModeEnabled ? "Play selected snippet" : "Play from start"}
-                  >
-                    <svg viewBox="0 0 24 24" width="11" height="11" fill="currentColor">
-                      <path d="M8 5v14l11-7z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 });

@@ -3,30 +3,45 @@
 import { useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { useAppPlayback } from "../../../../contexts/AppPlaybackContext";
-import { TrackPlayerScreen } from "../../../../components/snippet/TrackPlayerScreen";
+import { getPlayerRouteHintTrack } from "../../../../lib/player-route-hint";
+import { playerHref } from "../../../../lib/player-route";
 import { PlayerRouteSkeleton } from "../../../../components/snippet/PlayerRouteSkeleton";
 
-export default function PlayerTrackPage() {
+/** Deep links to `/player/:id` — sync context then replace with canonical `/player?t=`. */
+export default function LegacyPlayerTrackPage() {
   const params = useParams();
   const router = useRouter();
   const rawId = params?.trackId;
   const trackId = Array.isArray(rawId) ? rawId[0] : rawId;
-
   const pb = useAppPlayback();
 
   useEffect(() => {
-    if (pb.hydrated && !pb.token) {
-      router.replace("/");
+    if (!trackId || !pb.hydrated) return;
+    const hint = getPlayerRouteHintTrack(trackId, {
+      primedRef: pb.playerNavPrimedTrackRef,
+      trackLookup: pb.trackLookup,
+      playerState: pb.playerState,
+      recentlyPlayedTracks: pb.recentlyPlayedTracks,
+      spotifyResults: pb.spotifyResults,
+    });
+    if (hint) {
+      pb.setPlayerViewTrack(hint);
+    } else {
+      pb.setPlayerViewTrackId(trackId);
     }
-  }, [pb.hydrated, pb.token, router]);
+    router.replace(playerHref(trackId));
+  }, [
+    trackId,
+    pb.hydrated,
+    pb.setPlayerViewTrack,
+    pb.setPlayerViewTrackId,
+    pb.playerNavPrimedTrackRef,
+    pb.trackLookup,
+    pb.playerState,
+    pb.recentlyPlayedTracks,
+    pb.spotifyResults,
+    router,
+  ]);
 
-  if (!pb.hydrated) {
-    return <PlayerRouteSkeleton />;
-  }
-
-  if (!pb.token) {
-    return null;
-  }
-
-  return <TrackPlayerScreen trackId={trackId} />;
+  return <PlayerRouteSkeleton />;
 }

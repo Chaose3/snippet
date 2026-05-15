@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { fetchAllTimestamps } from "../../lib/timestamps";
 import {
@@ -22,23 +22,29 @@ import { useSnippetDerivedData } from "../../hooks/useSnippetDerivedData";
 import { useSnippetPlayback } from "../../hooks/useSnippetPlayback";
 import { AuthProvider } from "../../contexts/AuthContext";
 import { AppPlaybackContext } from "../../contexts/AppPlaybackContext";
+import { PlaybackPositionContext } from "../../contexts/PlaybackPositionContext";
+import { PlayerRouteSkeleton } from "./PlayerRouteSkeleton";
+import { getPlayerRouteHintTrack } from "../../lib/player-route-hint";
+import { isSearchPathname, tabFromPathname, tabHref } from "../../lib/app-routes";
+import {
+  isPlayerPathname,
+  playerHref,
+  trackIdFromPlayerPathname,
+  PLAYER_PATH,
+} from "../../lib/player-route";
 import { s } from "./homeStyles";
 import { ThemedLoader } from "./ThemedLoader";
 import { AppHeader } from "./AppHeader";
 import { MiniPlayerBar } from "./MiniPlayerBar";
 import { BottomNav } from "./BottomNav";
 
-function routeTrackIdFromPathname(pathname) {
-  if (!pathname || !pathname.startsWith("/player/")) return null;
-  const rest = pathname.slice("/player/".length).split("/").filter(Boolean);
-  return rest[0] ?? null;
-}
-
 export function AppShell({ children }) {
   const router = useRouter();
   const pathname = usePathname() || "";
-  const routeTrackId = useMemo(() => routeTrackIdFromPathname(pathname), [pathname]);
-  const isPlayerRoute = pathname.startsWith("/player/");
+  const legacyRouteTrackId = useMemo(() => trackIdFromPlayerPathname(pathname), [pathname]);
+  const isPlayerRoute = isPlayerPathname(pathname);
+  const [playerViewTrackId, setPlayerViewTrackIdState] = useState(null);
+  const routeTrackId = isPlayerRoute ? playerViewTrackId ?? legacyRouteTrackId : null;
 
   const { token, setToken, doRefresh, withFreshToken } = useSpotifyToken();
 
@@ -46,8 +52,9 @@ export function AppShell({ children }) {
   const [urlError, setUrlError] = useState(null);
   const [searchQuery, setSearchQuery] = useState("");
   const deferredSearchQuery = useDeferredValue(searchQuery);
-  const [activeTab, setActiveTab] = useState("home");
   const [pressedTab, setPressedTab] = useState(null);
+  const isSearchRoute = isSearchPathname(pathname);
+  const activeTab = useMemo(() => tabFromPathname(pathname), [pathname]);
 
   const { webPlayerId, webPlayerIdRef, sdkPlayerRef, webPlayerError } = useWebSpotifyPlayer(token);
 
@@ -87,12 +94,10 @@ export function AppShell({ children }) {
   } = useSnippetLibrary({
     token,
     withFreshToken,
-    activeTab,
-    deferredSearchQuery,
   });
 
   const { spotifyResults, searchLoading } = useSpotifySearchTab({
-    activeTab,
+    isSearchRoute,
     deferredSearchQuery,
     doRefresh,
   });
@@ -114,6 +119,30 @@ export function AppShell({ children }) {
   const modalRingSeekRef = useRef({ active: false });
   /** Set synchronously in `openPlayerForTrack` so the player screen can paint before async work. */
   const playerNavPrimedTrackRef = useRef(null);
+  /** Tab route to restore when closing full-screen player (pathname is /player while open). */
+  const playerReturnTabRef = useRef("home");
+
+  const setPlayerViewTrackId = useCallback(
+    (trackId) => {
+      if (!trackId) return;
+      setPlayerViewTrackIdState(trackId);
+      const href = playerHref(trackId);
+      const current =
+        typeof window !== "undefined"
+          ? `${window.location.pathname}${window.location.search}`
+          : "";
+      if (current !== href) {
+        router.replace(href, { scroll: false });
+      }
+    },
+    [router]
+  );
+
+  const setPlayerViewTrack = useCallback((track) => {
+    if (!track?.id) return;
+    playerNavPrimedTrackRef.current = track;
+    setPlayerViewTrackId(track.id);
+  }, [setPlayerViewTrackId]);
 
   const {
     previousPlayerTrack,
@@ -167,6 +196,7 @@ export function AppShell({ children }) {
     withFreshToken,
     isNativeApp,
     webPlayerId,
+    webPlayerError,
     webPlayerIdRef,
     sdkPlayerRef,
     playerState,
@@ -200,7 +230,7 @@ export function AppShell({ children }) {
     fetchAllTimestamps(token).then(setAllTimestamps);
   }, [token]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     setHydrated(true);
     const t = getStoredToken();
     setToken(t);
@@ -290,15 +320,51 @@ export function AppShell({ children }) {
 
   const handleTabPress = useCallback(
     (tab) => {
-      if (pathname.startsWith("/player/")) {
-        router.push("/");
-      }
       setPressedTab(tab);
-      setActiveTab(tab);
       setTimeout(() => setPressedTab(null), 150);
+      const href = tabHref(tab);
+      if (pathname !== href) router.push(href);
     },
     [pathname, router]
   );
+
+  useEffect(() => {
+    if (!token) return;
+    router.prefetch("/search");
+    router.prefetch("/profile");
+  }, [token, router]);
+
+  const prevPathnameRef = useRef(pathname);
+  useEffect(() => {
+    const prev = prevPathnameRef.current;
+    prevPathnameRef.current = pathname;
+    if (prev.startsWith("/search") && !pathname.startsWith("/search")) {
+      setSearchQuery("");
+    }
+  }, [pathname]);
+
+  /** Leaving /player — reset shell state so home/search keep scroll + safe-area layout. */
+  useEffect(() => {
+    if (isPlayerRoute) return;
+    setPlayerViewTrackIdState(null);
+    setModalMenuOpen(false);
+    setModalMenuSnippetsOpen(false);
+  }, [isPlayerRoute]);
+
+  /** Browser back/forward after in-player URL updates must stay aligned with App Router. */
+  useEffect(() => {
+    const onPopState = () => {
+      const path = window.location.pathname;
+      const search = window.location.search;
+      const next = `${path}${search}`;
+      const current = `${pathname}${typeof window !== "undefined" ? window.location.search : ""}`;
+      if (next !== current) {
+        router.replace(next, { scroll: false });
+      }
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, [pathname, router]);
 
   const onCopySupportEmail = useCallback(() => {
     navigator.clipboard.writeText("chaose3@outlook.com");
@@ -306,22 +372,28 @@ export function AppShell({ children }) {
     setTimeout(() => setEmailCopied(false), 2000);
   }, []);
 
-  const prefetchPlayerRoute = useCallback(
-    (trackId) => {
-      if (trackId) router.prefetch(`/player/${trackId}`);
-    },
-    [router]
-  );
+  const prefetchPlayerRoute = useCallback(() => {
+    router.prefetch(PLAYER_PATH);
+  }, [router]);
 
   const openPlayerForTrack = useCallback(
     (track) => {
       if (!track?.id) return;
-      playerNavPrimedTrackRef.current = track;
-      router.prefetch(`/player/${track.id}`);
-      router.push(`/player/${track.id}`);
+      const tab = tabFromPathname(pathname);
+      if (tab) playerReturnTabRef.current = tab;
+      setPlayerViewTrack(track);
+      router.prefetch(PLAYER_PATH);
+      router.push(PLAYER_PATH);
     },
-    [router]
+    [pathname, router, setPlayerViewTrack]
   );
+
+  const closePlayer = useCallback(() => {
+    setModalMenuOpen(false);
+    setModalMenuSnippetsOpen(false);
+    setPlayerViewTrackIdState(null);
+    router.replace(tabHref(playerReturnTabRef.current), { scroll: false });
+  }, [router]);
 
   const playbackContextValue = useMemo(
     () => ({
@@ -336,7 +408,6 @@ export function AppShell({ children }) {
       fetchDevices,
       playerState,
       queueTracks,
-      estimatedPos,
       handleSeekChange,
       handleSeekCommit,
       handleShuffle,
@@ -402,7 +473,11 @@ export function AppShell({ children }) {
       pressedTab,
       handleTabPress,
       openPlayerForTrack,
+      closePlayer,
       prefetchPlayerRoute,
+      playerViewTrackId,
+      setPlayerViewTrackId,
+      setPlayerViewTrack,
       playerNavPrimedTrackRef,
       emailCopied,
       onCopySupportEmail,
@@ -421,7 +496,6 @@ export function AppShell({ children }) {
       fetchDevices,
       playerState,
       queueTracks,
-      estimatedPos,
       handleSeekChange,
       handleSeekCommit,
       handleShuffle,
@@ -479,7 +553,11 @@ export function AppShell({ children }) {
       pressedTab,
       handleTabPress,
       openPlayerForTrack,
+      closePlayer,
       prefetchPlayerRoute,
+      playerViewTrackId,
+      setPlayerViewTrackId,
+      setPlayerViewTrack,
       playerNavPrimedTrackRef,
       emailCopied,
       onCopySupportEmail,
@@ -488,21 +566,45 @@ export function AppShell({ children }) {
     ]
   );
 
+  const positionContextValue = useMemo(
+    () => ({ estimatedPos, estimatedPosRef }),
+    [estimatedPos, estimatedPosRef]
+  );
+
+  const playerShellHintTrack = useMemo(
+    () =>
+      getPlayerRouteHintTrack(routeTrackId, {
+        primedRef: playerNavPrimedTrackRef,
+        trackLookup,
+        playerState,
+        recentlyPlayedTracks,
+        spotifyResults,
+      }),
+    [routeTrackId, trackLookup, playerState, recentlyPlayedTracks, spotifyResults, playerNavPrimedTrackRef]
+  );
+
   return (
     <AuthProvider value={authContextValue}>
       <AppPlaybackContext.Provider value={playbackContextValue}>
+        <PlaybackPositionContext.Provider value={positionContextValue}>
         {!hydrated ? (
-          <main style={{ ...s.main, ...s.centeredLoaderScreen }}>
-            <ThemedLoader size={0.78} label="Loading Snippet" />
-          </main>
+          isPlayerRoute ? (
+            <main style={{ ...s.main, ...s.mainPlayerBleed }}>
+              <PlayerRouteSkeleton hintTrack={playerShellHintTrack} />
+            </main>
+          ) : (
+            <main style={{ ...s.main, ...s.centeredLoaderScreen }}>
+              <ThemedLoader size={0.78} label="Loading Snippet" />
+            </main>
+          )
         ) : (
           <main
             style={{
               ...s.main,
-              ...(isPlayerRoute ? s.mainPlayerBleed : {}),
+              ...(isPlayerRoute ? s.mainPlayerBleed : s.mainAppShell),
             }}
           >
-            {!isPlayerRoute && <AppHeader token={token} onOpenSearch={() => handleTabPress("search")} />}
+            {!isPlayerRoute && <AppHeader />}
 
             {urlError && <p style={s.error}>Login issue: {urlError}</p>}
 
@@ -519,10 +621,10 @@ export function AppShell({ children }) {
                 {children}
               </div>
             ) : (
-              children
+              <div style={s.mainAppContent}>{children}</div>
             )}
 
-            {token && playerState && (
+            {token && playerState && !isPlayerRoute && (
               <MiniPlayerBar
                 playerState={playerState}
                 trackLookup={trackLookup}
@@ -540,6 +642,7 @@ export function AppShell({ children }) {
             {token && (
               <BottomNav
                 playerState={playerState}
+                miniPlayerDocked={!isPlayerRoute}
                 activeTab={activeTab}
                 pressedTab={pressedTab}
                 onTabPress={handleTabPress}
@@ -547,6 +650,7 @@ export function AppShell({ children }) {
             )}
           </main>
         )}
+        </PlaybackPositionContext.Provider>
       </AppPlaybackContext.Provider>
     </AuthProvider>
   );

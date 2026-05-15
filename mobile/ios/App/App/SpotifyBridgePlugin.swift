@@ -166,7 +166,11 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             appRemote?.connectionParameters.accessToken = token
             appRemote?.connect()
         } else if let errorDesc = parameters?[SPTAppRemoteErrorDescriptionKey] {
-            pendingCall?.reject(errorDesc)
+            if let uri = pendingURI, !uri.isEmpty, openSpotifyInExternalApp(uri: uri, positionMs: pendingPositionMs) {
+                pendingCall?.reject("SPOTIFY_FALLBACK_OPENED")
+            } else {
+                pendingCall?.reject(errorDesc)
+            }
             pendingCall = nil
         }
     }
@@ -180,6 +184,38 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         return remote
     }
 
+    /// Universal link or HTTPS URL that opens the Spotify app when installed, otherwise Safari.
+    private static func makeOpenSpotifyWebURL(uri: String, positionMs: Int) -> URL? {
+        let parts = uri.split(separator: ":").map(String.init)
+        guard parts.count >= 3, parts[0].lowercased() == "spotify" else { return nil }
+        let kind = parts[1].lowercased()
+        let rawId = parts[2]
+        let id = rawId.split(separator: "?").first.map(String.init) ?? ""
+        guard !id.isEmpty else { return nil }
+        let path: String
+        switch kind {
+        case "track": path = "track/\(id)"
+        case "episode": path = "episode/\(id)"
+        case "album": path = "album/\(id)"
+        case "playlist": path = "playlist/\(id)"
+        default: return nil
+        }
+        var c = URLComponents(string: "https://open.spotify.com/\(path)")
+        let sec = max(0, positionMs / 1000)
+        if sec > 0 {
+            c?.queryItems = [URLQueryItem(name: "t", value: String(sec))]
+        }
+        return c?.url
+    }
+
+    /// Opens Spotify (app via universal link when possible) or Spotify in the browser.
+    @discardableResult
+    private func openSpotifyInExternalApp(uri: String, positionMs: Int) -> Bool {
+        guard let url = Self.makeOpenSpotifyWebURL(uri: uri, positionMs: positionMs) else { return false }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
+        return true
+    }
+
     private func playAfterConnect() {
         guard let uri = pendingURI, !uri.isEmpty else {
             pendingCall?.resolve()
@@ -190,7 +226,11 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         appRemote?.playerAPI?.play(uri, asRadio: false) { [weak self] _, error in
             guard let self = self else { return }
             if let error = error {
-                self.pendingCall?.reject(error.localizedDescription)
+                if self.openSpotifyInExternalApp(uri: uri, positionMs: posMs) {
+                    self.pendingCall?.reject("SPOTIFY_FALLBACK_OPENED")
+                } else {
+                    self.pendingCall?.reject(error.localizedDescription)
+                }
                 self.pendingCall = nil
                 return
             }
@@ -237,17 +277,29 @@ extension SpotifyBridgePlugin: SPTAppRemoteDelegate {
         if error.domain == SPTAppRemoteErrorDomain {
             switch error.code {
             case bgWakeupFailed, connectionAttemptFailed, connectionTerminated:
-                pendingCall?.reject("SPOTIFY_NOT_INSTALLED")
+                if let uri = pendingURI, openSpotifyInExternalApp(uri: uri, positionMs: pendingPositionMs) {
+                    pendingCall?.reject("SPOTIFY_FALLBACK_OPENED")
+                } else {
+                    pendingCall?.reject("SPOTIFY_NOT_INSTALLED")
+                }
             default:
                 let lower = error.localizedDescription.lowercased()
                 if lower.contains("premium") || lower.contains("not authorized") || lower.contains("403") {
                     pendingCall?.reject("SPOTIFY_NOT_PREMIUM")
                 } else {
-                    pendingCall?.reject(error.localizedDescription)
+                    if let uri = pendingURI, openSpotifyInExternalApp(uri: uri, positionMs: pendingPositionMs) {
+                        pendingCall?.reject("SPOTIFY_FALLBACK_OPENED")
+                    } else {
+                        pendingCall?.reject(error.localizedDescription)
+                    }
                 }
             }
         } else {
-            pendingCall?.reject(error.localizedDescription)
+            if let uri = pendingURI, openSpotifyInExternalApp(uri: uri, positionMs: pendingPositionMs) {
+                pendingCall?.reject("SPOTIFY_FALLBACK_OPENED")
+            } else {
+                pendingCall?.reject(error.localizedDescription)
+            }
         }
         pendingCall = nil
     }

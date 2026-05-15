@@ -1,9 +1,10 @@
 "use client";
 
 import { memo } from "react";
-import { formatMs } from "../../lib/timestamps";
 import { s } from "./homeStyles";
+import { ModalSnipButton } from "./ModalSnipButton";
 
+/** Legacy modal chrome header (modal flows). Player route uses toolbar inside TrackDetailModalHero. */
 export const TrackDetailModalHeader = memo(function TrackDetailModalHeader({
   onDismiss,
   estimatedPos,
@@ -20,39 +21,15 @@ export const TrackDetailModalHeader = memo(function TrackDetailModalHeader({
           <path d="m6 9 6 6 6-6" />
         </svg>
       </button>
-      <div style={s.modalHandle} />
-      <div style={s.modalHeaderActions}>
-        <button
-          className={[
-            "modal-clip-btn",
-            modalClipPressed ? "is-pressed" : "",
-            modalClipSaved ? "is-saved" : "",
-          ].filter(Boolean).join(" ")}
-          onClick={handleModalClip}
-          onPointerDown={() => setModalClipPressed(true)}
-          onPointerUp={() => setModalClipPressed(false)}
-          onPointerLeave={() => setModalClipPressed(false)}
-          onPointerCancel={() => setModalClipPressed(false)}
-          aria-label={`Save clip at ${formatMs(estimatedPos)}`}
-          title={`Save clip at ${formatMs(estimatedPos)}`}
-        >
-          <span className="modal-clip-btn__icon-wrap">
-            <img src="/snippet-logo.png" alt="" className="modal-clip-btn__icon" />
-          </span>
-          <span className="modal-clip-btn__text">Snip</span>
-        </button>
-        <div style={s.modalClipNoticeWrap}>
-          <span
-            style={{
-              ...s.modalClipNotice,
-              opacity: modalClipNotice ? 1 : 0,
-              transform: modalClipNotice ? "translateY(0)" : "translateY(-2px)",
-            }}
-          >
-            {modalClipNotice || "\u00A0"}
-          </span>
-        </div>
-      </div>
+      <div style={s.modalHandle} aria-hidden />
+      <ModalSnipButton
+        estimatedPos={estimatedPos}
+        modalClipPressed={modalClipPressed}
+        setModalClipPressed={setModalClipPressed}
+        modalClipSaved={modalClipSaved}
+        modalClipNotice={modalClipNotice}
+        handleModalClip={handleModalClip}
+      />
     </div>
   );
 });

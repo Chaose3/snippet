@@ -86,13 +86,18 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
   }, [token, refreshPlayerSnapshot]);
 
   useEffect(() => {
+    let lastUiPush = 0;
     const id = setInterval(() => {
       if (isSeekingRef.current) return;
       if (!lastPollRef.current?.isPlaying) return;
       const elapsed = Date.now() - lastPollRef.current.time;
       const pos = lastPollRef.current.positionMs + elapsed;
       estimatedPosRef.current = pos;
-      setEstimatedPos(pos);
+      const now = Date.now();
+      if (now - lastUiPush >= 400) {
+        lastUiPush = now;
+        setEstimatedPos(pos);
+      }
     }, 200);
     return () => clearInterval(id);
   }, []);

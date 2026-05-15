@@ -36,18 +36,26 @@ const TABS = [
   },
 ];
 
-export const BottomNav = memo(function BottomNav({ playerState, activeTab, pressedTab, onTabPress }) {
+export const BottomNav = memo(function BottomNav({
+  playerState,
+  /** When false, nav uses full pill shape (mini player strip hidden — e.g. full-screen /player route). */
+  miniPlayerDocked = true,
+  activeTab,
+  pressedTab,
+  onTabPress,
+}) {
+  const dockedMini = Boolean(playerState && miniPlayerDocked);
   return (
     <nav
       style={{
         ...s.bottomNav,
-        ...(playerState ? s.bottomNavWithMiniPlayer : {}),
+        ...(dockedMini ? s.bottomNavWithMiniPlayer : {}),
       }}
     >
       <div
         style={{
           ...s.bottomNavSheen,
-          ...(playerState ? s.bottomNavSheenWithMiniPlayer : {}),
+          ...(dockedMini ? s.bottomNavSheenWithMiniPlayer : {}),
         }}
       />
       {TABS.map(({ id, label, icon }) => (
@@ -57,7 +65,7 @@ export const BottomNav = memo(function BottomNav({ playerState, activeTab, press
           aria-label={label}
           style={{
             ...s.navBtn,
-            ...(activeTab === id ? s.navBtnActive : {}),
+            ...(activeTab != null && activeTab === id ? s.navBtnActive : {}),
             transform: pressedTab === id ? "scale(0.8)" : "scale(1)",
           }}
           onClick={() => onTabPress(id)}

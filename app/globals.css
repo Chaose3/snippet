@@ -13,6 +13,8 @@ html {
 
 body {
   margin: 0;
+  max-width: 100%;
+  overflow-x: clip;
   font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
   background:
     radial-gradient(circle at top, rgba(90, 24, 154, 0.18), transparent 28%),
@@ -90,11 +92,16 @@ input[type="range"]::-moz-range-thumb {
 
 .search-orb-container {
   position: relative;
-  width: min(100%, 400px);
+  width: 100%;
+  max-width: 400px;
   height: 72px;
   display: flex;
   align-items: center;
   justify-content: center;
+  margin: 0 auto;
+  overflow: hidden;
+  isolation: isolate;
+  contain: layout paint;
   background: transparent;
   font-family: "Avenir Next", "Segoe UI", system-ui, sans-serif;
 }
@@ -102,8 +109,10 @@ input[type="range"]::-moz-range-thumb {
 .gooey-background-layer {
   position: absolute;
   inset: 0;
-  filter: url("#enhanced-goo");
+  overflow: hidden;
+  filter: url("#snippet-search-goo");
   z-index: 1;
+  pointer-events: none;
 }
 
 .blob {
@@ -161,21 +170,64 @@ input[type="range"]::-moz-range-thumb {
   border-radius: 26px;
   display: flex;
   align-items: center;
-  padding: 0 20px;
+  gap: 6px;
+  padding: 0 16px 0 20px;
   box-shadow: 0 16px 34px rgba(0, 0, 0, 0.34);
   transition: all 0.4s cubic-bezier(0.165, 0.84, 0.44, 1);
+}
+
+.search-orb-clear {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
+.search-orb-clear:hover {
+  background: rgba(255, 255, 255, 0.14);
 }
 
 .modern-input {
   background: transparent;
   border: none;
   outline: none;
+  flex: 1;
+  min-width: 0;
   width: 100%;
   color: white;
-  font-size: 15px;
+  /* 16px prevents iOS Safari zoom-on-focus, which breaks fixed chrome layout */
+  font-size: 16px;
   font-weight: 500;
   padding-left: 12px;
   letter-spacing: 0.02em;
+  -webkit-appearance: none;
+  appearance: none;
+  touch-action: manipulation;
+}
+
+/* Hide browser-native clear control on search inputs (custom × button is used instead). */
+.modern-input::-webkit-search-cancel-button,
+.modern-input::-webkit-search-decoration,
+.modern-input::-webkit-search-results-button {
+  -webkit-appearance: none;
+  appearance: none;
+  display: none;
+}
+
+.modern-input::-ms-clear {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .modern-input::placeholder {
@@ -210,7 +262,6 @@ input[type="range"]::-moz-range-thumb {
 }
 
 .search-orb-container:focus-within .input-overlay {
-  transform: translateY(-4px);
   background: rgba(14, 10, 20, 0.72);
   border-color: rgba(224, 170, 255, 0.26);
   box-shadow: 0 22px 42px rgba(0, 0, 0, 0.42);
@@ -220,14 +271,84 @@ input[type="range"]::-moz-range-thumb {
   width: 40%;
 }
 
-.search-orb-container:focus-within .blob-1 {
-  transform: scale(1.15) translateX(-20px);
+.search-orb-container:focus-within .blob-1,
+.search-orb-container:focus-within .blob-2 {
   filter: brightness(1.1);
 }
 
-.search-orb-container:focus-within .blob-2 {
-  transform: scale(1.15) translateX(20px);
-  filter: brightness(1.08);
+@media (prefers-reduced-motion: reduce) {
+  .blob {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .gooey-background-layer {
+    filter: none;
+  }
+}
+
+/* Player disc carousel — horizontal swipe between tracks */
+.player-disc-stage {
+  position: relative;
+  width: 100%;
+  max-width: 100%;
+  min-height: min(72vw, 360px);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.player-disc-viewport {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  max-width: 100%;
+  margin: 0 auto;
+  overflow: hidden;
+}
+
+.player-disc-slide-track {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  max-width: 100%;
+  height: fit-content;
+  margin: 0 auto;
+  flex-shrink: 0;
+  will-change: transform;
+}
+
+/* Keeps disc + rings square — never stretched by wide slide track */
+.player-disc-content {
+  position: relative;
+  flex-shrink: 0;
+  width: min(
+    360px,
+    72vw,
+    calc(100vw - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px) - 3rem)
+  );
+  max-width: 100%;
+  aspect-ratio: 1;
+  line-height: 0;
+}
+
+.player-disc-slide-track.is-animating {
+  transition: transform 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.player-disc-slide-track.is-dragging {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .player-disc-slide-track.is-animating {
+    transition-duration: 0.01ms;
+  }
 }
 
 .gooey-svg-filter {
@@ -759,19 +880,41 @@ input[type="range"]::-moz-range-thumb {
 
 @keyframes player-skeleton-shimmer {
   0% {
-    opacity: 0.38;
-  }
-  50% {
-    opacity: 0.78;
+    background-position: 200% 0;
   }
   100% {
-    opacity: 0.38;
+    background-position: -200% 0;
   }
 }
 
 .player-skeleton-pill {
-  animation: player-skeleton-shimmer 1.05s ease-in-out infinite;
-  background: rgba(224, 170, 255, 0.16);
+  background: linear-gradient(
+    90deg,
+    rgba(224, 170, 255, 0.1) 0%,
+    rgba(224, 170, 255, 0.28) 45%,
+    rgba(224, 170, 255, 0.1) 90%
+  );
+  background-size: 200% 100%;
+  animation: player-skeleton-shimmer 1.35s ease-in-out infinite;
+  will-change: background-position;
+}
+
+.player-skeleton-disc-wrap .player-skeleton-pill {
+  animation-duration: 1.6s;
+}
+
+.player-skeleton-ring {
+  animation: player-skeleton-ring-pulse 1.35s ease-in-out infinite;
+}
+
+@keyframes player-skeleton-ring-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.85;
+  }
 }
 
 .player-open-target {

@@ -2,7 +2,7 @@
 
 import { createContext, useContext } from "react";
 
-/** Playback + library + UI state shared by `/` and `/player/[trackId]` (single hook tree in AppShell). */
+/** Playback + library + UI state shared by `/` and `/player` (single hook tree in AppShell). */
 export const AppPlaybackContext = createContext(null);
 
 export function useAppPlayback() {

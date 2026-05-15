@@ -1,8 +1,10 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useCallback, useRef } from "react";
 import { formatMs } from "../../lib/timestamps";
 import { s } from "./homeStyles";
+import { ModalSnipButton } from "./ModalSnipButton";
+import { PlayerDiscStage } from "./PlayerDiscStage";
 
 export const TrackDetailModalHero = memo(function TrackDetailModalHero({
   variant = "modal",
@@ -24,44 +26,102 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
   handleRepeatCycle,
   jump,
   resolvePlaybackPosition,
+  onDismiss,
+  estimatedPos,
+  modalClipPressed,
+  setModalClipPressed,
+  modalClipSaved,
+  modalClipNotice,
+  handleModalClip,
+  onRequestNext: onRequestNextProp,
+  onRequestPrevious: onRequestPreviousProp,
 }) {
+  const discStageRef = useRef(null);
+  const onRequestNext = onRequestNextProp ?? handleSkipNext;
+  const onRequestPrevious = onRequestPreviousProp ?? handleSkipPrevious;
   const isPlayer = variant === "player";
   const heroStyle = isPlayer ? s.playerHero : s.modalHero;
   const discStageStyle = isPlayer ? s.playerDiscStage : s.modalDiscStage;
+  const transportStyle = isPlayer ? s.playerTransport : s.modalTransport;
+  const showPlayerToolbar = isPlayer && typeof onDismiss === "function";
+
+  const canGoNext = Boolean(onRequestNext);
+  const canGoPrevious = Boolean(onRequestPrevious);
+
+  const onSkipNextPress = useCallback(() => {
+    if (discStageRef.current?.slideNext) {
+      void discStageRef.current.slideNext();
+      return;
+    }
+    void onRequestNext?.();
+  }, [onRequestNext]);
+
+  const onSkipPreviousPress = useCallback(() => {
+    if (discStageRef.current?.slidePrevious) {
+      void discStageRef.current.slidePrevious();
+      return;
+    }
+    void onRequestPrevious?.();
+  }, [onRequestPrevious]);
 
   return (
     <div style={heroStyle}>
-      <div style={s.modalMetaRow}>
-        <div>
-          <p style={s.modalTrackName}>{activeModalTrack.name}</p>
-          <p style={s.modalArtist}>{activeModalTrack.artists}</p>
+      {showPlayerToolbar ? (
+        <div style={s.playerMetaRow}>
+          <button type="button" style={s.playerMetaClose} onClick={onDismiss} aria-label="Close player">
+            <svg
+              width="22"
+              height="22"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+          </button>
+          <div style={s.playerMetaCenter}>
+            <p style={s.playerMetaTitle}>{activeModalTrack.name}</p>
+            {activeModalTrack.artists ? <p style={s.playerMetaArtist}>{activeModalTrack.artists}</p> : null}
+          </div>
+          <ModalSnipButton
+            estimatedPos={estimatedPos}
+            modalClipPressed={modalClipPressed}
+            setModalClipPressed={setModalClipPressed}
+            modalClipSaved={modalClipSaved}
+            modalClipNotice={modalClipNotice}
+            handleModalClip={handleModalClip}
+          />
         </div>
-      </div>
+      ) : (
+        <div style={s.modalMetaRow}>
+          <div>
+            <p style={s.modalTrackName}>{activeModalTrack.name}</p>
+            <p style={s.modalArtist}>{activeModalTrack.artists}</p>
+          </div>
+        </div>
+      )}
 
-      <div style={discStageStyle}>
-        <div style={{ ...s.modalSideArt, ...s.modalSideArtLeft }}>
-          {previousTrack?.albumArt ? (
-            <>
-              <img src={previousTrack.albumArt} alt="" style={s.modalSideArtImage} />
-              <div style={{ ...s.modalSideArtGlass, ...s.modalSideArtGlassLeft }} />
-            </>
-          ) : (
-            <div style={s.modalSideArtFallback} />
-          )}
-        </div>
-        <div style={{ ...s.modalSideArt, ...s.modalSideArtRight }}>
-          {nextTrack?.albumArt ? (
-            <>
-              <img src={nextTrack.albumArt} alt="" style={s.modalSideArtImage} />
-              <div style={{ ...s.modalSideArtGlass, ...s.modalSideArtGlassRight }} />
-            </>
-          ) : (
-            <div style={s.modalSideArtFallback} />
-          )}
-        </div>
+      <PlayerDiscStage
+        ref={discStageRef}
+        stageStyle={discStageStyle}
+        activeTrackId={activeModalTrack?.id}
+        enableTrackSwipe={!(isPlayer && isCurrentTrack)}
+        previousTrack={previousTrack}
+        nextTrack={nextTrack}
+        canGoNext={canGoNext}
+        canGoPrevious={canGoPrevious}
+        onRequestNext={onRequestNext}
+        onRequestPrevious={onRequestPrevious}
+      >
         <div style={s.modalDiscOuter}>
+          <div style={s.modalProgressStack}>
           {isCurrentTrack && (
             <div
+              data-ring-seek
               style={s.modalProgressHitArea}
               onPointerDown={(event) => handleModalRingPointerDown(event, activeModalTrack.durationMs)}
               onPointerMove={(event) => handleModalRingPointerMove(event, activeModalTrack.durationMs)}
@@ -69,13 +129,13 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
               onPointerCancel={(event) => handleModalRingPointerUp(event, activeModalTrack.durationMs)}
             />
           )}
-          <svg viewBox="0 0 100 100" style={s.modalProgressRing} aria-hidden="true">
-            <path
-              d={modalProgressArcPath}
-              fill="none"
-              stroke="rgba(255,255,255,0.14)"
-              strokeWidth="1.8"
-            />
+          <svg
+            viewBox="0 0 100 100"
+            preserveAspectRatio="xMidYMid meet"
+            style={s.modalProgressRing}
+            aria-hidden="true"
+          >
+            <path d={modalProgressArcPath} fill="none" stroke="rgba(255,255,255,0.14)" strokeWidth="1.8" />
             <path
               d={modalProgressArcPath}
               fill="none"
@@ -87,10 +147,11 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
               style={s.modalProgressActive}
             />
           </svg>
+          </div>
           <div style={s.modalDiscInner}>
-            <div style={s.modalDiscCenter}>
+            <div style={s.modalDiscCenter} data-disc-center>
               {activeModalTrack.albumArt ? (
-                <img src={activeModalTrack.albumArt} alt="" style={s.modalArt} />
+                <img src={activeModalTrack.albumArt} alt="" style={s.modalArt} draggable={false} />
               ) : (
                 <div style={s.modalArtFallback} />
               )}
@@ -98,9 +159,9 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
           </div>
           <div style={s.modalDiscTime}>{formatMs(modalProgressMs)}</div>
         </div>
-      </div>
+      </PlayerDiscStage>
 
-      <div style={s.modalTransport}>
+      <div style={transportStyle}>
         <button
           style={{
             ...s.modalTransportBtn,
@@ -119,7 +180,7 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
             <path d="M20 7l-2.8-2.8" />
           </svg>
         </button>
-        <button style={s.modalTransportBtn} onClick={handleSkipPrevious} aria-label="Previous track">
+        <button style={s.modalTransportBtn} onClick={onSkipPreviousPress} aria-label="Previous track">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M6 5h2v14H6zM18 5 8.5 12 18 19z" />
           </svg>
@@ -144,7 +205,7 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
             </svg>
           )}
         </button>
-        <button style={s.modalTransportBtn} onClick={handleSkipNext} aria-label="Next track">
+        <button style={s.modalTransportBtn} onClick={onSkipNextPress} aria-label="Next track">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
             <path d="M16 5h2v14h-2zM6 5l9.5 7L6 19z" />
           </svg>
