@@ -20,7 +20,14 @@ import {
   STORAGE_EXPIRES,
 } from "../lib/auth-storage";
 import { getNativeSpotifyBridge, isNativeCapacitor } from "../lib/capacitor/platform";
-import { getSpotifyWebOpenUrl } from "../lib/spotify-open-url";
+import { openSpotifyExternal } from "../lib/capacitor/open-spotify-external";
+import { startNativeSpotifyPlayback } from "../lib/capacitor/native-play-track";
+import { isAppRemoteConnected } from "../lib/capacitor/native-player-state";
+import {
+  clearPlaybackIntent,
+  setPlaybackIntent,
+} from "../lib/playback-intent";
+import { trackIdFromSpotifyUri } from "../lib/spotify-web-play";
 import { webSdkReportsPlaying } from "../lib/web-spotify-playback";
 import { MAX_SNIPPETS_PER_TRACK } from "../lib/snippet-ui-utils";
 
@@ -43,6 +50,7 @@ export function useSnippetPlayback({
   estimatedPos,
   isSeekingRef,
   refreshPlayerSnapshot,
+  schedulePlayerRefresh,
   fetchDevices,
   snippetModeEnabled,
   allTimestamps,
@@ -95,34 +103,20 @@ export function useSnippetPlayback({
         typeof trackOrUri === "object" && trackOrUri ? trackOrUri : playbackContext;
       if (!trackUri || trackUri.startsWith("spotify:local:")) return;
 
-      const openSpotifyWebInNewTab = async () => {
-        if (isNativeApp) return "skipped";
-        const url = getSpotifyWebOpenUrl(trackUri, positionMs);
-        if (!url) return "no-url";
+      const intentTrackId = contextSource?.id ?? trackIdFromSpotifyUri(trackUri);
+      if (intentTrackId) setPlaybackIntent(intentTrackId, contextSource);
 
-        if (isNativeCapacitor()) {
-          try {
-            const { Browser } = await import("@capacitor/browser");
-            await Browser.open({ url, presentationStyle: "popover" });
-            return "opened";
-          } catch (e) {
-            console.warn("[openSpotifyWebInNewTab] Browser.open failed", e);
-            return "failed";
-          }
-        }
+      const openSpotifyWebInNewTab = () => openSpotifyExternal(trackUri, positionMs);
 
-        const win = window.open(url, "_blank", "noopener,noreferrer");
-        return win == null ? "blocked" : "opened";
-      };
-
-      /** Real browser: new tab. iOS/Android app: in-app browser (Snippet stays underneath). */
+      /** Web: new tab. Native: Spotify app via UIApplication (never Capacitor Browser). */
       const openSpotifyWebIfBrowser = async () => {
+        if (isNativeCapacitor()) return;
         const result = await openSpotifyWebInNewTab();
         if (result === "blocked") {
           alert(
             "Pop-up blocked. Allow pop-ups for this site so Spotify can open in a new tab while Snippet stays open."
           );
-        } else if (result === "failed") {
+        } else if (result === "failed" || result === "no-url") {
           alert("Couldn’t open Spotify from the app. Open the Spotify app on this device and try again.");
         }
       };
@@ -140,49 +134,97 @@ export function useSnippetPlayback({
         }
       };
 
-      const nativeSpotifyBridge = getNativeSpotifyBridge();
-      if (nativeSpotifyBridge?.connectAndPlay) {
-        try {
-          await nativeSpotifyBridge.connectAndPlay({ uri: trackUri, positionMs });
-          lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
-          setEstimatedPos(positionMs);
-          return;
-        } catch (err) {
-          const message = String(err?.message || err || "");
-          console.warn("[nativeSpotifyBridge.connectAndPlay] failed", message);
-          if (message.includes("SPOTIFY_FALLBACK_OPENED")) {
-            return;
+      const buildPlayRequest = (accessToken, targetDevice) => ({
+        trackUri,
+        positionMs,
+        deviceId: targetDevice,
+        contextUri: contextSource?.contextUri ?? null,
+        offsetUri: contextSource?.offsetUri ?? null,
+        offsetPosition: contextSource?.offsetPosition,
+      });
+
+      const applyLocalPlayingState = () => {
+        lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
+        setEstimatedPos(positionMs);
+      };
+
+      const applyOptimisticNowPlaying = () => {
+        const track = contextSource;
+        if (!track?.id || !setPlayerState) return;
+        setPlayerState((prev) => {
+          if (prev?.id === track.id && prev.isPlaying) {
+            return { ...prev, positionMs, isPlaying: true };
           }
-          if (message.includes("SPOTIFY_NOT_INSTALLED")) {
-            const result = await openSpotifyWebInNewTab();
-            if (result === "opened") {
-              if (!isNativeCapacitor()) {
-                alert(
-                  "Couldn’t use the Spotify app from here. The track was opened on Spotify’s website in a new tab — play it there."
-                );
-              }
-            } else if (result === "blocked") {
-              alert(
-                "Pop-up blocked. Allow pop-ups for this site so Spotify can open in a new tab, or install the Spotify app and try again."
-              );
-            } else if (result === "failed" || result === "no-url") {
-              alert(
-                isNativeCapacitor()
-                  ? "Could not open Spotify here. Install or open the Spotify app and try again."
-                  : "Could not start playback in the Spotify app. Install Spotify on this device and try again."
-              );
-            }
-            return;
-          }
-          if (message.includes("SPOTIFY_NOT_PREMIUM")) {
-            alert("Spotify Premium is required for playback control.");
-            return;
-          }
+          return {
+            id: track.id,
+            name: track.name ?? prev?.name ?? "",
+            uri: track.uri ?? trackUri,
+            artists: track.artists ?? prev?.artists ?? "",
+            albumArt: track.albumArt ?? prev?.albumArt ?? null,
+            durationMs: track.durationMs ?? prev?.durationMs ?? 0,
+            positionMs,
+            isPlaying: true,
+            shuffle: prev?.shuffle ?? false,
+            repeatMode: prev?.repeatMode ?? "off",
+            volumePercent: prev?.volumePercent ?? 100,
+          };
+        });
+      };
+
+      const afterPlayStarted = ({ optimistic = true } = {}) => {
+        if (optimistic) {
+          applyLocalPlayingState();
+          applyOptimisticNowPlaying();
         }
+        refreshPlayerSnapshot?.().catch((err) => {
+          console.warn("[jump] refreshPlayerSnapshot failed", err);
+        });
+        schedulePlayerRefresh?.(optimistic ? 350 : 700);
+      };
+
+      const revertOptimisticPlay = () => {
+        if (!intentTrackId || !setPlayerState) return;
+        setPlayerState((prev) =>
+          prev?.id === intentTrackId ? { ...prev, isPlaying: false } : prev
+        );
+        if (lastPollRef.current) lastPollRef.current.isPlaying = false;
+      };
+
+      if (intentTrackId && contextSource?.id) {
+        applyLocalPlayingState();
+        applyOptimisticNowPlaying();
       }
 
       const t = getStoredToken();
-      if (!t) return;
+
+      /** iOS/Android: Web API on phone when active; App Remote if connected; open Spotify only to wake. */
+      if (isNativeCapacitor()) {
+        const result = await startNativeSpotifyPlayback(trackUri, positionMs, {
+          withFreshToken,
+          contextSource,
+        });
+        if (result === "remote" || result === "api") {
+          afterPlayStarted({ optimistic: true });
+        } else if (result === "external") {
+          revertOptimisticPlay();
+          afterPlayStarted({ optimistic: false });
+        } else if (result === "premium") {
+          clearPlaybackIntent(intentTrackId);
+          alert("Spotify Premium is required for playback control.");
+        } else {
+          revertOptimisticPlay();
+          clearPlaybackIntent(intentTrackId);
+          console.warn("[jump] native playback failed", trackUri);
+          alert("Couldn’t start playback. Open the Spotify app once, then try again.");
+        }
+        return;
+      }
+
+      if (!t) {
+        revertOptimisticPlay();
+        clearPlaybackIntent(intentTrackId);
+        return;
+      }
       const browserDeviceId = await ensureBrowserPlaybackDevice();
       const targetDevice = browserDeviceId || webPlayerIdRef.current || deviceId || null;
       if ((browserDeviceId || webPlayerIdRef.current) && sdkPlayerRef.current?.activateElement) {
@@ -199,18 +241,10 @@ export function useSnippetPlayback({
           console.warn("[transferPlayback] failed", err);
         }
       }
-      const request = {
-        trackUri,
-        positionMs,
-        deviceId: targetDevice,
-        contextUri: contextSource?.contextUri ?? null,
-        offsetUri: contextSource?.offsetUri ?? null,
-        offsetPosition: contextSource?.offsetPosition,
-      };
+      const request = buildPlayRequest(t, targetDevice);
       const res = await playSnippet(t, request);
       if (res.status === 204 || res.ok) {
-        lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
-        setEstimatedPos(positionMs);
+        afterPlayStarted();
         await maybeOpenSpotifyWebAfterApiPlay();
         return;
       }
@@ -232,8 +266,7 @@ export function useSnippetPlayback({
         }
         const retry = await playSnippet(newToken, request);
         if (retry.status === 204 || retry.ok) {
-          lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
-          setEstimatedPos(positionMs);
+          afterPlayStarted();
           await maybeOpenSpotifyWebAfterApiPlay();
           return;
         }
@@ -268,8 +301,12 @@ export function useSnippetPlayback({
       ensureBrowserPlaybackDevice,
       fetchDevices,
       isNativeApp,
+      playerState,
       lastPollRef,
+      refreshPlayerSnapshot,
+      schedulePlayerRefresh,
       setEstimatedPos,
+      setPlayerState,
       setToken,
       webPlayerError,
       webPlayerIdRef,
@@ -280,7 +317,8 @@ export function useSnippetPlayback({
   const handlePlayPause = useCallback(async () => {
     if (!playerState) return;
     const nativeSpotifyBridge = getNativeSpotifyBridge();
-    if (nativeSpotifyBridge) {
+    const useAppRemote = nativeSpotifyBridge && (await isAppRemoteConnected());
+    if (useAppRemote) {
       if (playerState.isPlaying && nativeSpotifyBridge.pause) {
         await nativeSpotifyBridge.pause().catch((err) => {
           console.warn("[nativeSpotifyBridge.pause] failed", err);
@@ -294,9 +332,9 @@ export function useSnippetPlayback({
       const t = getStoredToken();
       if (!t) return;
       if (playerState.isPlaying) {
-        await pausePlayback(t);
+        await withFreshToken((accessToken) => pausePlayback(accessToken));
       } else {
-        await resumePlayback(t);
+        await withFreshToken((accessToken) => resumePlayback(accessToken));
       }
     }
     if (playerState.isPlaying) {
@@ -309,7 +347,7 @@ export function useSnippetPlayback({
         lastPollRef.current.time = Date.now();
       }
     }
-  }, [playerState, setPlayerState, lastPollRef]);
+  }, [playerState, setPlayerState, lastPollRef, withFreshToken]);
 
   const handleSeekChange = useCallback(
     (e) => {
@@ -323,13 +361,14 @@ export function useSnippetPlayback({
     async (e) => {
       const posMs = Number(e.target.value);
       const nativeSpotifyBridge = getNativeSpotifyBridge();
-      if (nativeSpotifyBridge?.seek) {
+      const useAppRemote = nativeSpotifyBridge && (await isAppRemoteConnected());
+      if (useAppRemote && nativeSpotifyBridge.seek) {
         await nativeSpotifyBridge.seek({ positionMs: posMs }).catch((err) => {
           console.warn("[nativeSpotifyBridge.seek] failed", err);
         });
       } else {
         const t = getStoredToken();
-        if (t) await seekToPosition(t, posMs);
+        if (t) await withFreshToken((accessToken) => seekToPosition(accessToken, posMs));
       }
       if (lastPollRef.current) {
         lastPollRef.current.positionMs = posMs;
@@ -337,20 +376,21 @@ export function useSnippetPlayback({
       }
       isSeekingRef.current = false;
     },
-    [isSeekingRef, lastPollRef]
+    [isSeekingRef, lastPollRef, withFreshToken]
   );
 
   const commitSeekPosition = useCallback(
     async (posMs) => {
       const clamped = Math.max(0, Math.floor(posMs));
       const nativeSpotifyBridge = getNativeSpotifyBridge();
-      if (nativeSpotifyBridge?.seek) {
+      const useAppRemote = nativeSpotifyBridge && (await isAppRemoteConnected());
+      if (useAppRemote && nativeSpotifyBridge.seek) {
         await nativeSpotifyBridge.seek({ positionMs: clamped }).catch((err) => {
           console.warn("[nativeSpotifyBridge.seek] failed", err);
         });
       } else {
         const t = getStoredToken();
-        if (t) await seekToPosition(t, clamped);
+        if (t) await withFreshToken((accessToken) => seekToPosition(accessToken, clamped));
       }
       if (lastPollRef.current) {
         lastPollRef.current.positionMs = clamped;
@@ -359,7 +399,7 @@ export function useSnippetPlayback({
       setEstimatedPos(clamped);
       isSeekingRef.current = false;
     },
-    [isSeekingRef, lastPollRef, setEstimatedPos]
+    [isSeekingRef, lastPollRef, setEstimatedPos, withFreshToken]
   );
 
   const pointerOnRingBand = useCallback((event) => {
@@ -450,11 +490,13 @@ export function useSnippetPlayback({
         await startPlayback();
 
         let nextState = null;
-        for (let attempt = 0; attempt < 8; attempt += 1) {
+        const pollAttempts = isNativeCapacitor() ? 4 : 5;
+        const pollDelayMs = isNativeCapacitor() ? 400 : 180;
+        for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
           const snapshot = await refreshPlayerSnapshot();
           nextState = snapshot?.state ?? null;
           if (nextState?.id && (!previousTrackId || nextState.id !== previousTrackId)) break;
-          await new Promise((resolve) => setTimeout(resolve, 180));
+          await new Promise((resolve) => setTimeout(resolve, pollDelayMs));
         }
 
         if (!nextState?.id || !snippetModeEnabled) return;
@@ -651,12 +693,41 @@ export function useSnippetPlayback({
     [allTimestamps, selectedSnippetIndexByTrack, snippetModeEnabled]
   );
 
+  const primePlaybackTrack = useCallback(
+    (track, positionMs = 0) => {
+      if (!track?.id || !setPlayerState) return;
+      setPlaybackIntent(track.id, track);
+      lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
+      setEstimatedPos(positionMs);
+      setPlayerState((prev) => {
+        if (prev?.id === track.id && prev.isPlaying) {
+          return { ...prev, positionMs, isPlaying: true };
+        }
+        return {
+          id: track.id,
+          name: track.name ?? prev?.name ?? "",
+          uri: track.uri ?? prev?.uri ?? null,
+          artists: track.artists ?? prev?.artists ?? "",
+          albumArt: track.albumArt ?? prev?.albumArt ?? null,
+          durationMs: track.durationMs ?? prev?.durationMs ?? 0,
+          positionMs,
+          isPlaying: true,
+          shuffle: prev?.shuffle ?? false,
+          repeatMode: prev?.repeatMode ?? "off",
+          volumePercent: prev?.volumePercent ?? 100,
+        };
+      });
+    },
+    [setPlayerState, setEstimatedPos, lastPollRef]
+  );
+
   const playTrackWithMode = useCallback(
     (track) => {
       if (!track?.uri || !track?.id) return;
+      primePlaybackTrack(track, resolvePlaybackPosition(track.id, 0));
       jump(track, resolvePlaybackPosition(track.id, 0), track);
     },
-    [jump, resolvePlaybackPosition]
+    [jump, resolvePlaybackPosition, primePlaybackTrack]
   );
 
   const handleDelete = useCallback(async (trackId, index) => {
@@ -710,6 +781,7 @@ export function useSnippetPlayback({
     handleModalClip,
     handleSelectSnippet,
     resolvePlaybackPosition,
+    primePlaybackTrack,
     playTrackWithMode,
     handleDelete,
   };

@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getPlaybackIntent } from "../../lib/playback-intent";
 import { buildTrackDetailModalModel } from "../../lib/track-detail-modal-model";
 import { getTrackById } from "../../lib/snippet";
 import { getPlayerRouteHintTrack } from "../../lib/player-route-hint";
@@ -43,34 +44,33 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
         recentlyPlayedTracks,
         spotifyResults,
       }),
-    [trackId, trackLookup, playerState, recentlyPlayedTracks, spotifyResults, playerNavPrimedTrackRef]
+    [trackId, trackLookup, playerState?.id, recentlyPlayedTracks, spotifyResults, playerNavPrimedTrackRef]
   );
 
   useLayoutEffect(() => {
     if (!trackId) return;
     const primed = playerNavPrimedTrackRef?.current;
-    if (primed?.id === trackId) {
-      playerNavPrimedTrackRef.current = null;
+    if (primed?.id) {
       setResolvedTrack(primed);
       setLoadError(null);
       setLoadingTrack(false);
-      lastTrackIdRef.current = trackId;
+      lastTrackIdRef.current = primed.id;
+      if (primed.id === trackId) playerNavPrimedTrackRef.current = null;
       return;
     }
+    if (lastTrackIdRef.current === trackId) return;
+    lastTrackIdRef.current = trackId;
     const fromLookup = trackLookup[trackId];
     if (fromLookup) {
       setResolvedTrack(fromLookup);
       setLoadError(null);
       setLoadingTrack(false);
-      lastTrackIdRef.current = trackId;
       return;
     }
-    if (lastTrackIdRef.current !== trackId) {
-      lastTrackIdRef.current = trackId;
-      setResolvedTrack(null);
-      setLoadingTrack(true);
-    }
+    setLoadingTrack(false);
   }, [trackId, trackLookup, playerNavPrimedTrackRef]);
+
+  const lookupTrack = trackId ? trackLookup[trackId] : null;
 
   useEffect(() => {
     if (!trackId) {
@@ -80,17 +80,24 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
       return;
     }
 
+    if (resolvedTrack?.id === trackId && !loadError) {
+      return;
+    }
+
     let cancelled = false;
 
-    const fromLookup = trackLookup[trackId];
-    if (fromLookup) {
-      setResolvedTrack(fromLookup);
+    if (lookupTrack) {
+      setResolvedTrack(lookupTrack);
       setLoadError(null);
       setLoadingTrack(false);
       return;
     }
 
-    if (playerState?.id === trackId) {
+    const playbackIntentId = getPlaybackIntent();
+    if (
+      playerState?.id === trackId &&
+      (!playbackIntentId || playbackIntentId === trackId)
+    ) {
       setResolvedTrack({
         id: playerState.id,
         name: playerState.name,
@@ -153,7 +160,17 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
     return () => {
       cancelled = true;
     };
-  }, [trackId, trackLookup, playerState, recentlyPlayedTracks, spotifyResults, token, withFreshToken]);
+  }, [
+    trackId,
+    lookupTrack,
+    playerState?.id,
+    recentlyPlayedTracks,
+    spotifyResults,
+    token,
+    withFreshToken,
+    resolvedTrack?.id,
+    loadError,
+  ]);
 
   const { setPlayerViewTrack } = pb;
 
@@ -173,11 +190,7 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
     return null;
   }
 
-  const primedMatchesRoute =
-    playerNavPrimedTrackRef?.current?.id === trackId ||
-    resolvedTrack?.id === trackId ||
-    playerState?.id === trackId;
-  const showSkeleton = loadingTrack && !primedMatchesRoute;
+  const showSkeleton = loadingTrack && !resolvedTrack && !hintTrack;
   if (showSkeleton) {
     return <PlayerRouteSkeleton hintTrack={hintTrack ?? resolvedTrack} />;
   }
@@ -210,6 +223,7 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
   const router = useRouter();
   const pb = useAppPlayback();
   const { estimatedPos } = usePlaybackPosition();
+  const estimatedPosBucket = Math.floor(estimatedPos / 1000);
 
   const {
     playerState,
@@ -277,7 +291,8 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
       fallbackUpcomingTracks,
       previousPlayerTrack,
       selectedSnippetIndexByTrack,
-      estimatedPos,
+      estimatedPosBucket,
+      playerState?.isPlaying,
     ]
   );
 
@@ -285,51 +300,22 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
     pb.closePlayer?.();
   }, [pb]);
 
-  const navigateToTrack = useCallback(
+  const playUpNextTrack = useCallback(
     (track) => {
       if (!track?.id) return;
       pb.prefetchPlayerRoute?.();
       syncViewToTrack(track);
+      playTrackWithMode(track);
     },
-    [pb, syncViewToTrack]
+    [pb, syncViewToTrack, playTrackWithMode]
   );
-
-  const prevPlayingIdRef = useRef(playerState?.id ?? null);
-  useEffect(() => {
-    const prevPlaying = prevPlayingIdRef.current;
-    const nowPlaying = playerState?.id ?? null;
-    prevPlayingIdRef.current = nowPlaying;
-    if (!nowPlaying || nowPlaying === trackId) return;
-    if (prevPlaying !== trackId) return;
-    const fromLookup = trackLookup[nowPlaying];
-    const track =
-      fromLookup ??
-      ({
-        id: playerState.id,
-        name: playerState.name,
-        uri: playerState.uri,
-        artists: playerState.artists,
-        albumArt: playerState.albumArt,
-        durationMs: playerState.durationMs,
-      });
-    syncViewToTrack(track);
-  }, [
-    playerState?.id,
-    playerState?.name,
-    playerState?.uri,
-    playerState?.artists,
-    playerState?.albumArt,
-    playerState?.durationMs,
-    trackId,
-    trackLookup,
-    syncViewToTrack,
-  ]);
 
   const closeAfterSnippetPlay = useCallback(() => {
     router.push("/");
   }, [router]);
 
   const isCurrentTrack = model?.isCurrentTrack ?? false;
+  const heroIsPlaying = model?.heroIsPlaying ?? false;
   const nextTrack = model?.nextTrack ?? null;
   const previousTrack = model?.previousTrack ?? null;
 
@@ -388,6 +374,7 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
                 variant="player"
                 activeModalTrack={activeModalTrack}
                 isCurrentTrack={isCurrentTrack}
+                heroIsPlaying={heroIsPlaying}
                 playerState={playerState}
                 previousTrack={previousTrack}
                 nextTrack={nextTrack}
@@ -420,9 +407,8 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
               upcomingTracks={upcomingTracks}
               setModalMenuOpen={setModalMenuOpen}
               setModalMenuSnippetsOpen={setModalMenuSnippetsOpen}
-              onNavigateToTrack={navigateToTrack}
               onPrefetchTrack={pb.prefetchPlayerRoute}
-              playTrackWithMode={playTrackWithMode}
+              playTrackWithMode={playUpNextTrack}
             />
           </div>
         </div>

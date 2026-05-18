@@ -3,9 +3,7 @@ import {
   getStoredRefreshToken,
   getStoredToken,
   getStoredExpiry,
-  STORAGE_KEY,
-  STORAGE_REFRESH,
-  STORAGE_EXPIRES,
+  persistSpotifySession,
 } from "../lib/auth-storage";
 
 export function useSpotifyToken() {
@@ -28,13 +26,12 @@ export function useSpotifyToken() {
 
     const data = await res.json();
     const newToken = data.access_token;
-    const expiresAt = Date.now() + (data.expires_in ?? 3600) * 1000;
-
-    localStorage.setItem(STORAGE_KEY, newToken);
-    localStorage.setItem(STORAGE_EXPIRES, String(expiresAt));
-    if (data.refresh_token) {
-      localStorage.setItem(STORAGE_REFRESH, data.refresh_token);
-    }
+    persistSpotifySession({
+      access_token: newToken,
+      refresh_token: data.refresh_token,
+      expires_in: data.expires_in ?? 3600,
+      scope: data.scope,
+    });
 
     setToken(newToken);
     console.log("[doRefresh] token refreshed, expires in", data.expires_in, "s");

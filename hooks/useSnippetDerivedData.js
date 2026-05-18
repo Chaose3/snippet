@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserPlaybackHelp } from "../lib/browser-playback-help";
+import { getPlaybackIntent } from "../lib/playback-intent";
 
 export function useSnippetDerivedData({
   allTimestamps,
@@ -60,6 +61,8 @@ export function useSnippetDerivedData({
 
   useEffect(() => {
     if (!playerState?.id) return;
+    const intent = getPlaybackIntent();
+    if (intent && playerState.id !== intent) return;
     if (lastPlayerTrackIdRef.current && lastPlayerTrackIdRef.current !== playerState.id) {
       const priorTrack = trackLookup[lastPlayerTrackIdRef.current];
       if (priorTrack) {

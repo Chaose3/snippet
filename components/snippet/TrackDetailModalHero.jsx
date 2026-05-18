@@ -10,6 +10,7 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
   variant = "modal",
   activeModalTrack,
   isCurrentTrack,
+  heroIsPlaying = false,
   playerState,
   previousTrack,
   nextTrack,
@@ -186,7 +187,7 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
           </svg>
         </button>
         <button
-          className={!isCurrentTrack || !playerState?.isPlaying ? "play-pulse" : undefined}
+          className={!heroIsPlaying ? "play-pulse" : undefined}
           style={s.modalTransportPrimary}
           onClick={() => {
             if (isCurrentTrack) {
@@ -195,9 +196,9 @@ export const TrackDetailModalHero = memo(function TrackDetailModalHero({
             }
             jump(activeModalTrack, resolvePlaybackPosition(activeModalTrack.id, 0), activeModalTrack);
           }}
-          aria-label={isCurrentTrack && playerState?.isPlaying ? "Pause" : "Play"}
+          aria-label={heroIsPlaying ? "Pause" : "Play"}
         >
-          {isCurrentTrack && playerState?.isPlaying ? (
+          {heroIsPlaying ? (
             <span style={{ letterSpacing: "3px", fontSize: "1.45rem" }}>❙❙</span>
           ) : (
             <svg viewBox="0 0 512 512" width="26" height="26" fill="currentColor" style={{ marginLeft: 4 }}>

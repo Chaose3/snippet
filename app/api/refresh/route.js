@@ -50,7 +50,7 @@ export async function POST(request) {
   return NextResponse.json({
     access_token: data.access_token,
     expires_in: data.expires_in ?? 3600,
-    // Spotify rotates the refresh token occasionally — pass it through if present
     refresh_token: data.refresh_token ?? null,
+    scope: data.scope ?? null,
   });
 }

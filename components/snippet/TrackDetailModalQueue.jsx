@@ -8,7 +8,6 @@ export const TrackDetailModalQueue = memo(function TrackDetailModalQueue({
   upcomingTracks,
   setModalMenuOpen,
   setModalMenuSnippetsOpen,
-  onNavigateToTrack,
   onPrefetchTrack,
   playTrackWithMode,
 }) {
@@ -46,10 +45,7 @@ export const TrackDetailModalQueue = memo(function TrackDetailModalQueue({
             className="player-open-target"
             style={s.modalQueueRow}
             onPointerEnter={() => onPrefetchTrack?.(track.id)}
-            onClick={() => {
-              onNavigateToTrack(track);
-              playTrackWithMode(track);
-            }}
+            onClick={() => playTrackWithMode(track)}
           >
             {track.albumArt ? (
               <img src={track.albumArt} alt="" style={s.modalQueueArt} />

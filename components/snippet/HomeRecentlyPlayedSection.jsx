@@ -5,6 +5,7 @@ import { s } from "./homeStyles";
 
 export const HomeRecentlyPlayedSection = memo(function HomeRecentlyPlayedSection({
   recentlyPlayedTracks,
+  recentlyPlayedError,
   prioritizedRecentlyPlayed,
   remainingRecentlyPlayed,
   recentlyPlayedOpen,
@@ -24,8 +25,14 @@ export const HomeRecentlyPlayedSection = memo(function HomeRecentlyPlayedSection
           <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{recentlyPlayedOpen ? "▲" : "▼"}</span>
         </div>
       </button>
-      {recentlyPlayedTracks.length === 0 ? (
-        <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>Start listening and your recent songs will appear here.</p>
+      {recentlyPlayedError ? (
+        <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem", color: "rgba(255, 180, 160, 0.95)" }}>
+          {recentlyPlayedError}
+        </p>
+      ) : recentlyPlayedTracks.length === 0 ? (
+        <p style={{ ...s.muted, padding: "0.25rem 0.35rem 0.4rem" }}>
+          Start listening on Spotify and your recent songs will appear here.
+        </p>
       ) : (
         <div style={s.recentlyPlayedGrid}>
           {[...prioritizedRecentlyPlayed, ...(recentlyPlayedOpen ? remainingRecentlyPlayed : [])].map((track) => (

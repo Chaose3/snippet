@@ -287,6 +287,38 @@ input[type="range"]::-moz-range-thumb {
   }
 }
 
+/* Mobile / Capacitor: keep search focus instant (blur + SVG goo are slow on WKWebView). */
+@media (hover: none) and (pointer: coarse) {
+  .gooey-background-layer {
+    filter: none;
+    opacity: 0.85;
+  }
+
+  .blob {
+    animation: none;
+    transition: none;
+  }
+
+  .input-overlay {
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+    background: rgba(14, 10, 20, 0.94);
+    transition: border-color 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .search-orb-container:focus-within .input-overlay {
+    transition: none;
+  }
+
+  .focus-indicator {
+    transition: none;
+  }
+
+  .modern-input {
+    transform: translateZ(0);
+  }
+}
+
 /* Player disc carousel — horizontal swipe between tracks */
 .player-disc-stage {
   position: relative;

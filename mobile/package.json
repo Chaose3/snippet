@@ -5,7 +5,8 @@
   "scripts": {
     "ios": "cap run ios",
     "android": "cap run android",
-    "sync": "cap sync",
+    "sync": "cap sync && node scripts/patch-ios-spotify-plugin.mjs",
+    "sync:ios": "cap sync ios && node scripts/patch-ios-spotify-plugin.mjs",
     "open": "cap open ios",
     "open:android": "cap open android"
   },

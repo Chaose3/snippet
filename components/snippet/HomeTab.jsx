@@ -42,6 +42,7 @@ export const HomeTab = memo(function HomeTab({
   handleQuickPlayPlaylist,
   playTrackWithMode,
   recentlyPlayedTracks,
+  recentlyPlayedError,
   prioritizedRecentlyPlayed,
   remainingRecentlyPlayed,
   recentlyPlayedOpen,
@@ -95,6 +96,7 @@ export const HomeTab = memo(function HomeTab({
 
       <HomeRecentlyPlayedSection
         recentlyPlayedTracks={recentlyPlayedTracks}
+        recentlyPlayedError={recentlyPlayedError}
         prioritizedRecentlyPlayed={prioritizedRecentlyPlayed}
         remainingRecentlyPlayed={remainingRecentlyPlayed}
         recentlyPlayedOpen={recentlyPlayedOpen}

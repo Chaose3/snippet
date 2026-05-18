@@ -11,10 +11,11 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function callbackHtml({ accessToken, refreshToken, expiresIn, error, detail }) {
+function callbackHtml({ accessToken, refreshToken, expiresIn, scope, error, detail }) {
   const safeAccessToken = accessToken ? JSON.stringify(accessToken) : "null";
   const safeRefreshToken = refreshToken ? JSON.stringify(refreshToken) : "null";
   const safeExpiresIn = Number.isFinite(expiresIn) ? String(expiresIn) : "3600";
+  const safeScope = scope ? JSON.stringify(scope) : "null";
   const safeError = error ? JSON.stringify(error) : "null";
   const safeDetail = detail ? JSON.stringify(detail) : "null";
 
@@ -51,6 +52,7 @@ function callbackHtml({ accessToken, refreshToken, expiresIn, error, detail }) {
         const accessToken = ${safeAccessToken};
         const refreshToken = ${safeRefreshToken};
         const expiresIn = ${safeExpiresIn};
+        const scope = ${safeScope};
         const error = ${safeError};
         const detail = ${safeDetail};
 
@@ -70,6 +72,21 @@ function callbackHtml({ accessToken, refreshToken, expiresIn, error, detail }) {
             localStorage.setItem("spotify_refresh_token", refreshToken);
           }
           localStorage.setItem("spotify_token_expires_at", String(Date.now() + expiresIn * 1000));
+          if (scope) {
+            localStorage.setItem("spotify_token_scope", scope);
+          } else {
+            localStorage.removeItem("spotify_token_scope");
+          }
+          try {
+            localStorage.setItem("spotify_auth_mode", "web_api");
+          } catch {
+            /* ignore */
+          }
+          try {
+            window.dispatchEvent(new CustomEvent("snippet:auth-complete"));
+          } catch {
+            /* ignore */
+          }
 
           const status = document.getElementById("status");
           if (status) {
@@ -196,6 +213,7 @@ export async function GET(request) {
         accessToken: data.access_token,
         refreshToken: data.refresh_token ?? null,
         expiresIn: data.expires_in ?? 3600,
+        scope: data.scope ?? null,
       }),
       {
         status: 200,

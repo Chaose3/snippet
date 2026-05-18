@@ -1,16 +1,31 @@
 "use client";
 
-import { useCallback, useDeferredValue, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { fetchAllTimestamps } from "../../lib/timestamps";
+import { notifyAuthComplete } from "../../lib/auth-events";
 import {
+  clearLegacyAppRemoteSession,
+  clearSpotifySession,
   getStoredToken,
-  STORAGE_KEY,
-  STORAGE_REFRESH,
-  STORAGE_EXPIRES,
   STORAGE_SNIPPET_MODE,
 } from "../../lib/auth-storage";
-import { getNativeSpotifyBridge, isNativeCapacitor, NATIVE_OAUTH_REDIRECT_URI } from "../../lib/capacitor/platform";
+import { getNativeSpotifyBridge, isNativeCapacitor } from "../../lib/capacitor/platform";
+import { startNativeSpotifyLogin } from "../../lib/capacitor/native-spotify-login";
+import {
+  probeSpotifyConnectEnvironment,
+  redactPkce,
+  spotifyConnectError,
+  spotifyConnectLog,
+} from "../../lib/capacitor/spotify-connect-log";
 import { useCapacitorOAuth } from "../../hooks/useCapacitorOAuth";
 import { useSpotifyToken } from "../../hooks/useSpotifyToken";
 import { useWebSpotifyPlayer } from "../../hooks/useWebSpotifyPlayer";
@@ -22,6 +37,7 @@ import { useSnippetDerivedData } from "../../hooks/useSnippetDerivedData";
 import { useSnippetPlayback } from "../../hooks/useSnippetPlayback";
 import { AuthProvider } from "../../contexts/AuthContext";
 import { AppPlaybackContext } from "../../contexts/AppPlaybackContext";
+import { AppSearchContext } from "../../contexts/AppSearchContext";
 import { PlaybackPositionContext } from "../../contexts/PlaybackPositionContext";
 import { PlayerRouteSkeleton } from "./PlayerRouteSkeleton";
 import { getPlayerRouteHintTrack } from "../../lib/player-route-hint";
@@ -29,6 +45,7 @@ import { isSearchPathname, tabFromPathname, tabHref } from "../../lib/app-routes
 import {
   isPlayerPathname,
   playerHref,
+  replacePlayerTrackInUrl,
   trackIdFromPlayerPathname,
   PLAYER_PATH,
 } from "../../lib/player-route";
@@ -74,6 +91,24 @@ export function AppShell({ children }) {
     resetPlayer,
   } = useSpotifyPlayerSnapshot({ token, withFreshToken });
 
+  const refreshScheduleRef = useRef(null);
+  const schedulePlayerRefresh = useCallback(
+    (delayMs = 900) => {
+      if (refreshScheduleRef.current) clearTimeout(refreshScheduleRef.current);
+      refreshScheduleRef.current = setTimeout(() => {
+        refreshScheduleRef.current = null;
+        refreshPlayerSnapshot();
+      }, delayMs);
+    },
+    [refreshPlayerSnapshot]
+  );
+
+  useEffect(() => {
+    return () => {
+      if (refreshScheduleRef.current) clearTimeout(refreshScheduleRef.current);
+    };
+  }, []);
+
   const { devices, deviceId, setDeviceId, loadingDevices, fetchDevices } = useSpotifyDevices({
     token,
     playerState,
@@ -89,6 +124,7 @@ export function AppShell({ children }) {
     playlistErrors,
     likedTracks,
     recentlyPlayedTracks,
+    recentlyPlayedError,
     handleTogglePlaylist,
     resetLibrary,
   } = useSnippetLibrary({
@@ -123,17 +159,18 @@ export function AppShell({ children }) {
   const playerReturnTabRef = useRef("home");
 
   const setPlayerViewTrackId = useCallback(
-    (trackId) => {
+    (trackId, { useRouter = true } = {}) => {
       if (!trackId) return;
       setPlayerViewTrackIdState(trackId);
+      if (typeof window === "undefined") return;
       const href = playerHref(trackId);
-      const current =
-        typeof window !== "undefined"
-          ? `${window.location.pathname}${window.location.search}`
-          : "";
-      if (current !== href) {
-        router.replace(href, { scroll: false });
+      const current = `${window.location.pathname}${window.location.search}`;
+      if (current === href) return;
+      if (!useRouter || isPlayerPathname(window.location.pathname)) {
+        replacePlayerTrackInUrl(trackId);
+        return;
       }
+      router.replace(href, { scroll: false });
     },
     [router]
   );
@@ -188,6 +225,7 @@ export function AppShell({ children }) {
     handleModalClip,
     handleSelectSnippet,
     resolvePlaybackPosition,
+    primePlaybackTrack,
     playTrackWithMode,
     handleDelete,
   } = useSnippetPlayback({
@@ -209,6 +247,7 @@ export function AppShell({ children }) {
     estimatedPos,
     isSeekingRef,
     refreshPlayerSnapshot,
+    schedulePlayerRefresh,
     fetchDevices,
     snippetModeEnabled,
     allTimestamps,
@@ -232,6 +271,9 @@ export function AppShell({ children }) {
 
   useLayoutEffect(() => {
     setHydrated(true);
+    if (clearLegacyAppRemoteSession()) {
+      setToken(null);
+    }
     const t = getStoredToken();
     setToken(t);
     if (t) setUrlError(null);
@@ -255,52 +297,45 @@ export function AppShell({ children }) {
   }, [snippetModeEnabled]);
 
   const goLogin = useCallback(async () => {
-    const { generateCodeVerifier, generateCodeChallenge } = await import("../../lib/pkce-browser");
-    const verifier = generateCodeVerifier();
-    const challenge = await generateCodeChallenge(verifier);
-    const isNative = isNativeCapacitor();
-    const platform = (() => {
-      try {
-        const c = window.Capacitor;
-        if (typeof c?.getPlatform === "function") return c.getPlatform();
-        return null;
-      } catch {
-        return null;
-      }
-    })();
+    spotifyConnectLog("goLogin.tap", { pathname: typeof window !== "undefined" ? window.location.pathname : null });
 
-    const qs = new URLSearchParams({
-      code_challenge: challenge,
-      verifier,
-      ...(isNative ? { redirect_uri: NATIVE_OAUTH_REDIRECT_URI } : {}),
-    });
+    try {
+      const env = await probeSpotifyConnectEnvironment();
+      const { generateCodeVerifier, generateCodeChallenge } = await import("../../lib/pkce-browser");
+      const verifier = generateCodeVerifier();
+      const challenge = await generateCodeChallenge(verifier);
 
-    const loginUrl = `${window.location.origin}/api/login?${qs.toString()}`;
-    console.log("[goLogin]", {
-      isNative,
-      platform,
-      origin: window.location.origin,
-      loginUrl,
-    });
+      spotifyConnectLog("goLogin.pkce", {
+        verifier: redactPkce(verifier),
+        codeChallenge: redactPkce(challenge),
+        isNative: env.isNative,
+        platform: env.platform,
+        spotifyAppInstalled: env.spotifyAppInstalled,
+        hasSpotifyBridge: env.hasSpotifyBridge,
+        browserPluginAvailable: env.browserPluginAvailable,
+      });
 
-    if (isNative) {
-      try {
-        const { Browser } = await import("@capacitor/browser");
-        console.log("[goLogin] opening native browser", { loginUrl });
-        await Browser.open({ url: loginUrl, presentationStyle: "fullscreen" });
+      if (env.isNative) {
+        spotifyConnectLog("goLogin.route", {
+          branch: "native",
+          order: "PKCE (Web API) — App Remote stays in Spotify SDK, not localStorage",
+        });
+        const result = await startNativeSpotifyLogin({ challenge, verifier });
+        spotifyConnectLog("goLogin.done", { result: { mode: result?.mode } });
         return;
-      } catch (e) {
-        console.warn("[goLogin] Browser.open failed, falling back", e);
       }
-    }
 
-    window.location.href = loginUrl;
-  }, []);
+      const loginUrl = `${window.location.origin}/api/login?${new URLSearchParams({ code_challenge: challenge, verifier }).toString()}`;
+      spotifyConnectLog("goLogin.route", { branch: "web", loginUrl });
+      window.location.href = loginUrl;
+    } catch (e) {
+      spotifyConnectError("goLogin.failed", { error: e });
+      throw e;
+    }
+  }, [setToken, setUrlError]);
 
   const handleLogout = useCallback(() => {
-    localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(STORAGE_REFRESH);
-    localStorage.removeItem(STORAGE_EXPIRES);
+    clearSpotifySession();
     setToken(null);
     resetPlayer();
     resetLibrary();
@@ -381,11 +416,13 @@ export function AppShell({ children }) {
       if (!track?.id) return;
       const tab = tabFromPathname(pathname);
       if (tab) playerReturnTabRef.current = tab;
-      setPlayerViewTrack(track);
-      router.prefetch(PLAYER_PATH);
-      router.push(PLAYER_PATH);
+      playerNavPrimedTrackRef.current = track;
+      setPlayerViewTrackIdState(track.id);
+      const href = playerHref(track.id);
+      router.prefetch(href);
+      router.push(href, { scroll: false });
     },
-    [pathname, router, setPlayerViewTrack]
+    [pathname, router]
   );
 
   const closePlayer = useCallback(() => {
@@ -433,8 +470,10 @@ export function AppShell({ children }) {
       playlistErrors,
       handleTogglePlaylist,
       handleQuickPlayPlaylist,
+      primePlaybackTrack,
       playTrackWithMode,
       recentlyPlayedTracks,
+      recentlyPlayedError,
       prioritizedRecentlyPlayed,
       remainingRecentlyPlayed,
       recentlyPlayedOpen,
@@ -518,8 +557,10 @@ export function AppShell({ children }) {
       playlistErrors,
       handleTogglePlaylist,
       handleQuickPlayPlaylist,
+      primePlaybackTrack,
       playTrackWithMode,
       recentlyPlayedTracks,
+      recentlyPlayedError,
       prioritizedRecentlyPlayed,
       remainingRecentlyPlayed,
       recentlyPlayedOpen,
@@ -571,6 +612,11 @@ export function AppShell({ children }) {
     [estimatedPos, estimatedPosRef]
   );
 
+  const searchContextValue = useMemo(
+    () => ({ searchQuery, setSearchQuery, searchLoading, spotifyResults }),
+    [searchQuery, searchLoading, spotifyResults]
+  );
+
   const playerShellHintTrack = useMemo(
     () =>
       getPlayerRouteHintTrack(routeTrackId, {
@@ -586,6 +632,7 @@ export function AppShell({ children }) {
   return (
     <AuthProvider value={authContextValue}>
       <AppPlaybackContext.Provider value={playbackContextValue}>
+        <AppSearchContext.Provider value={searchContextValue}>
         <PlaybackPositionContext.Provider value={positionContextValue}>
         {!hydrated ? (
           isPlayerRoute ? (
@@ -651,6 +698,7 @@ export function AppShell({ children }) {
           </main>
         )}
         </PlaybackPositionContext.Provider>
+        </AppSearchContext.Provider>
       </AppPlaybackContext.Provider>
     </AuthProvider>
   );

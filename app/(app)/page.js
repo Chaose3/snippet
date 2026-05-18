@@ -43,6 +43,7 @@ export default function HomePage() {
     handleQuickPlayPlaylist,
     playTrackWithMode,
     recentlyPlayedTracks,
+    recentlyPlayedError,
     prioritizedRecentlyPlayed,
     remainingRecentlyPlayed,
     recentlyPlayedOpen,
@@ -94,6 +95,7 @@ export default function HomePage() {
       handleQuickPlayPlaylist={handleQuickPlayPlaylist}
       playTrackWithMode={playTrackWithMode}
       recentlyPlayedTracks={recentlyPlayedTracks}
+      recentlyPlayedError={recentlyPlayedError}
       prioritizedRecentlyPlayed={prioritizedRecentlyPlayed}
       remainingRecentlyPlayed={remainingRecentlyPlayed}
       recentlyPlayedOpen={recentlyPlayedOpen}

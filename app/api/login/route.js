@@ -1,18 +1,10 @@
 import { NextResponse } from "next/server";
+import { SPOTIFY_WEB_API_SCOPE_STRING } from "../../../lib/spotify-scopes";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
 const NATIVE_REDIRECT_URI = "snippet://callback";
 
-const SCOPES = [
-  "user-read-playback-state",
-  "user-modify-playback-state",
-  "user-read-currently-playing",
-  "user-read-recently-played",
-  "streaming",
-  "user-library-read",
-  "playlist-read-private",
-  "playlist-read-collaborative",
-].join(" ");
+const SCOPES = SPOTIFY_WEB_API_SCOPE_STRING;
 
 export async function GET(request) {
   const clientId = process.env.SPOTIFY_CLIENT_ID;
@@ -30,11 +22,13 @@ export async function GET(request) {
   const verifier = searchParams.get("verifier");
   const redirectOverride = searchParams.get("redirect_uri");
   const redirectUri = redirectOverride || REDIRECT_URI;
-  console.log("[api/login] request", {
+  console.log("[spotifyConnect][api/login] request", {
     redirectOverride: redirectOverride || null,
     redirectUri,
+    isNativeRedirect: redirectUri === NATIVE_REDIRECT_URI,
     hasCodeChallenge: Boolean(codeChallenge),
     hasVerifier: Boolean(verifier),
+    userAgent: request.headers.get("user-agent")?.slice(0, 120) ?? null,
   });
 
   if (!codeChallenge || !verifier) {
@@ -54,10 +48,16 @@ export async function GET(request) {
     code_challenge_method: "S256",
     code_challenge: codeChallenge,
     state: verifier,
-    show_dialog: "false",
+    // Native redirect must re-approve scopes; web can skip dialog when already consented.
+    show_dialog: redirectUri === NATIVE_REDIRECT_URI ? "true" : "false",
   });
 
   const url = `https://accounts.spotify.com/authorize?${params.toString()}`;
-  console.log("[api/login] redirecting to Spotify (client-side PKCE)");
+  console.log("[spotifyConnect][api/login] redirect → accounts.spotify.com", {
+    redirectUri,
+    scopeCount: SCOPES.split(" ").length,
+    authorizeHost: "accounts.spotify.com",
+    note: "Spotify login page opens in whatever WebView/Browser loaded /api/login — not spotify:// by design",
+  });
   return NextResponse.redirect(url);
 }
