@@ -1,9 +1,12 @@
 "use client";
 
 import { memo } from "react";
+import { useAppVersion } from "../../hooks/useAppVersion";
 import { s } from "./homeStyles";
 
 export const ProfileTab = memo(function ProfileTab({ onLogout }) {
+  const appVersion = useAppVersion();
+
   return (
     <div style={s.profileTab}>
       <div style={s.profileAvatarWrap}>
@@ -17,6 +20,9 @@ export const ProfileTab = memo(function ProfileTab({ onLogout }) {
       <button type="button" style={{ ...s.btnGhost, padding: "0.6rem 1.75rem" }} onClick={onLogout}>
         Log out of Spotify
       </button>
+      <p style={s.profileVersion} aria-label="App version">
+        {appVersion ? `Snippet ${appVersion}` : "Snippet"}
+      </p>
     </div>
   );
 });
