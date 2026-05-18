@@ -19,7 +19,7 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
         CAPPluginMethod(name: "getPlayerState", returnType: CAPPluginReturnPromise),
     ]
 
-    private let clientID = "4bbd5f391aa642c297e20fbe4c3f620e"
+    private let clientID = "9aaba07c6ffa4342a33ef523e47e1229"
     private let redirectURI = URL(string: "snippet://callback")!
 
     private var appRemote: SPTAppRemote?

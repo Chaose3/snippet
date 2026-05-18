@@ -23,6 +23,13 @@ if (!list.includes("SpotifyBridgePlugin")) {
 config.packageClassList = list;
 writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`, "utf8");
 console.log("[patch-ios-spotify-plugin] packageClassList:", list.join(", "));
+if (config.server?.url) {
+  console.log("[patch-ios-spotify-plugin] WebView server.url:", config.server.url);
+} else {
+  console.warn(
+    "[patch-ios-spotify-plugin] No server.url — native app loads bundled www/ placeholder only. Set CAP_SERVER_URL in repo .env and run cap sync.",
+  );
+}
 
 const clientId = process.env.SPOTIFY_CLIENT_ID?.trim();
 if (clientId) {

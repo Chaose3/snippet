@@ -1,14 +1,15 @@
 import { NextResponse } from "next/server";
+import { buildSpotifyTokenRequest, getSpotifyOAuthCredentials } from "../../../lib/spotify-oauth-server";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
 const ALLOWED_REDIRECT_URIS = new Set([REDIRECT_URI, "snippet://callback"]);
 
 /**
- * Exchange authorization code for tokens (PKCE — no client secret).
+ * Exchange authorization code for tokens (PKCE).
  * Expects { code, code_verifier } in the JSON body.
  */
 export async function POST(request) {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const { clientId } = getSpotifyOAuthCredentials();
   if (!clientId) {
     return NextResponse.json(
       { error: "SPOTIFY_CLIENT_ID missing on server" },
@@ -39,18 +40,20 @@ export async function POST(request) {
     return NextResponse.json({ error: "Invalid redirect_uri" }, { status: 400 });
   }
 
-  const params = new URLSearchParams({
+  const tokenRequest = buildSpotifyTokenRequest({
     grant_type: "authorization_code",
     code,
     redirect_uri: redirectUri,
-    client_id: clientId,
     code_verifier: codeVerifier,
   });
+  if (tokenRequest.error) {
+    return NextResponse.json({ error: tokenRequest.error }, { status: 500 });
+  }
 
   const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
+    headers: tokenRequest.headers,
+    body: tokenRequest.body,
   });
 
   const text = await tokenRes.text();

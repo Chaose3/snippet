@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  AUTH_MODE_APP_REMOTE,
+  clearSpotifySession,
+  getStoredAuthMode,
   getStoredRefreshToken,
   getStoredToken,
   getStoredExpiry,
@@ -10,6 +13,8 @@ export function useSpotifyToken() {
   const [token, setToken] = useState(null);
 
   const doRefresh = useCallback(async () => {
+    if (getStoredAuthMode() === AUTH_MODE_APP_REMOTE) return null;
+
     const refreshToken = getStoredRefreshToken();
     if (!refreshToken) return null;
 
@@ -20,7 +25,18 @@ export function useSpotifyToken() {
     });
 
     if (!res.ok) {
-      console.warn("[doRefresh] refresh failed", res.status);
+      const body = await res.json().catch(() => ({}));
+      const detail = typeof body?.detail === "string" ? body.detail : "";
+      if (
+        res.status === 400 &&
+        (detail.includes("invalid_client") ||
+          detail.includes("invalid_grant") ||
+          detail.includes("invalid_refresh_token"))
+      ) {
+        clearSpotifySession();
+        setToken(null);
+      }
+      console.warn("[doRefresh] refresh failed", res.status, body?.hint || detail || "");
       return null;
     }
 
@@ -57,8 +73,10 @@ export function useSpotifyToken() {
 
   useEffect(() => {
     if (!token) return;
+    if (getStoredAuthMode() === AUTH_MODE_APP_REMOTE) return;
     const expiry = getStoredExpiry();
     if (!expiry) return;
+    if (!getStoredRefreshToken()) return;
 
     const msUntilRefresh = expiry - Date.now() - 5 * 60 * 1000;
     if (msUntilRefresh <= 0) {

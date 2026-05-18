@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { buildSpotifyTokenRequest, getSpotifyOAuthCredentials } from "../../../lib/spotify-oauth-server";
 
 export async function POST(request) {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const { clientId, clientSecret } = getSpotifyOAuthCredentials();
   if (!clientId) {
     return NextResponse.json({ error: "SPOTIFY_CLIENT_ID missing" }, { status: 500 });
   }
@@ -18,24 +19,30 @@ export async function POST(request) {
     return NextResponse.json({ error: "Missing refresh_token" }, { status: 400 });
   }
 
-  const params = new URLSearchParams({
+  const tokenRequest = buildSpotifyTokenRequest({
     grant_type: "refresh_token",
     refresh_token: refreshToken,
-    client_id: clientId,
   });
+  if (tokenRequest.error) {
+    return NextResponse.json({ error: tokenRequest.error }, { status: 500 });
+  }
 
   const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
     method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body: params.toString(),
+    headers: tokenRequest.headers,
+    body: tokenRequest.body,
   });
 
   const text = await tokenRes.text();
 
   if (!tokenRes.ok) {
     console.error("[api/refresh] Spotify error", tokenRes.status, text);
+    const hint =
+      tokenRes.status === 400 && text.includes("invalid_client") && !clientSecret
+        ? "Add SPOTIFY_CLIENT_SECRET from the Spotify Developer Dashboard to .env.local (or clear stored tokens and log in again)."
+        : null;
     return NextResponse.json(
-      { error: "Refresh failed", detail: text },
+      { error: "Refresh failed", detail: text, hint },
       { status: tokenRes.status }
     );
   }

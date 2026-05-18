@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { buildSpotifyTokenRequest, getSpotifyOAuthCredentials } from "../../lib/spotify-oauth-server";
 
 const REDIRECT_URI = process.env.SPOTIFY_REDIRECT_URI ?? "http://127.0.0.1:3000/callback";
 
@@ -104,7 +105,7 @@ function callbackHtml({ accessToken, refreshToken, expiresIn, scope, error, deta
 }
 
 export async function GET(request) {
-  const clientId = process.env.SPOTIFY_CLIENT_ID;
+  const { clientId } = getSpotifyOAuthCredentials();
   if (!clientId) {
     return new NextResponse(
       callbackHtml({
@@ -163,19 +164,30 @@ export async function GET(request) {
     );
   }
 
-  const params = new URLSearchParams({
+  const tokenRequest = buildSpotifyTokenRequest({
     grant_type: "authorization_code",
     code,
     redirect_uri: REDIRECT_URI,
-    client_id: clientId,
     code_verifier: codeVerifier,
   });
+  if (tokenRequest.error) {
+    return new NextResponse(
+      callbackHtml({
+        error: "server_config",
+        detail: tokenRequest.error,
+      }),
+      {
+        status: 500,
+        headers: { "Content-Type": "text/html; charset=utf-8" },
+      }
+    );
+  }
 
   try {
     const tokenRes = await fetch("https://accounts.spotify.com/api/token", {
       method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: params.toString(),
+      headers: tokenRequest.headers,
+      body: tokenRequest.body,
     });
 
     const text = await tokenRes.text();
