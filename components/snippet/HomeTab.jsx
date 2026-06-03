@@ -28,7 +28,7 @@ export const HomeTab = memo(function HomeTab({
   handleDelete,
   snippetsOpen,
   setSnippetsOpen,
-  snippetTracks,
+  totalSnippetCount,
   playlists,
   prioritizedPlaylists,
   remainingPlaylists,
@@ -75,7 +75,7 @@ export const HomeTab = memo(function HomeTab({
           handleDelete={handleDelete}
           snippetsOpen={snippetsOpen}
           setSnippetsOpen={setSnippetsOpen}
-          snippetTrackCount={snippetTracks.length}
+          totalSnippetCount={totalSnippetCount}
         />
       )}
 

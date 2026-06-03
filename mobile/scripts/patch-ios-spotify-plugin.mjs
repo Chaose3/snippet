@@ -20,6 +20,9 @@ const list = Array.isArray(config.packageClassList) ? [...config.packageClassLis
 if (!list.includes("SpotifyBridgePlugin")) {
   list.push("SpotifyBridgePlugin");
 }
+if (!list.includes("WidgetBridgePlugin")) {
+  list.push("WidgetBridgePlugin");
+}
 config.packageClassList = list;
 writeFileSync(configPath, `${JSON.stringify(config, null, "\t")}\n`, "utf8");
 console.log("[patch-ios-spotify-plugin] packageClassList:", list.join(", "));

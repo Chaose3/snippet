@@ -90,14 +90,23 @@ export async function PATCH(request) {
   return NextResponse.json(timestamps);
 }
 
-// DELETE /api/timestamps — body: { trackId, index }
+// DELETE /api/timestamps — body: { trackId, index } or { trackId, deleteAll: true }
 export async function DELETE(request) {
   const userId = await resolveUserId(request.headers.get("Authorization"));
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { trackId, index } = await request.json();
-  if (!trackId || index == null) {
-    return NextResponse.json({ error: "Missing trackId or index" }, { status: 400 });
+  const { trackId, index, deleteAll } = await request.json();
+  if (!trackId) {
+    return NextResponse.json({ error: "Missing trackId" }, { status: 400 });
+  }
+
+  if (deleteAll) {
+    await redis.hdel(redisKey(userId), trackId);
+    return NextResponse.json([]);
+  }
+
+  if (index == null) {
+    return NextResponse.json({ error: "Missing index or deleteAll" }, { status: 400 });
   }
 
   const existing = await redis.hget(redisKey(userId), trackId);

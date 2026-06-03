@@ -15,6 +15,19 @@ const TABS = [
     ),
   },
   {
+    id: "snippets",
+    label: "Snippets",
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="6" cy="6" r="2.25" />
+        <circle cx="6" cy="18" r="2.25" />
+        <path d="M20 4L8.5 15.5" />
+        <path d="M14.5 8.5L20 4l-4 4" />
+        <path d="M8.5 15.5L4 20l4-4" />
+      </svg>
+    ),
+  },
+  {
     id: "search",
     label: "Search",
     icon: (
@@ -43,6 +56,7 @@ export const BottomNav = memo(function BottomNav({
   activeTab,
   pressedTab,
   onTabPress,
+  totalSnippetCount = 0,
 }) {
   const dockedMini = Boolean(playerState && miniPlayerDocked);
   return (
@@ -58,21 +72,30 @@ export const BottomNav = memo(function BottomNav({
           ...(dockedMini ? s.bottomNavSheenWithMiniPlayer : {}),
         }}
       />
-      {TABS.map(({ id, label, icon }) => (
-        <button
-          key={id}
-          type="button"
-          aria-label={label}
-          style={{
-            ...s.navBtn,
-            ...(activeTab != null && activeTab === id ? s.navBtnActive : {}),
-            transform: pressedTab === id ? "scale(0.8)" : "scale(1)",
-          }}
-          onClick={() => onTabPress(id)}
-        >
-          {icon}
-        </button>
-      ))}
+      {TABS.map(({ id, label, icon }) => {
+        const showBadge = id === "snippets" && totalSnippetCount > 0;
+        return (
+          <button
+            key={id}
+            type="button"
+            aria-label={showBadge ? `${label}, ${totalSnippetCount} snippets` : label}
+            style={{
+              ...s.navBtn,
+              ...(activeTab != null && activeTab === id ? s.navBtnActive : {}),
+              transform: pressedTab === id ? "scale(0.8)" : "scale(1)",
+              position: "relative",
+            }}
+            onClick={() => onTabPress(id)}
+          >
+            {icon}
+            {showBadge && (
+              <span style={s.navSnippetBadge} aria-hidden="true">
+                {totalSnippetCount > 99 ? "99+" : totalSnippetCount}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </nav>
   );
 });

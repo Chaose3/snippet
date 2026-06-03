@@ -12,7 +12,7 @@ import {
   getDevices,
   transferPlayback,
 } from "../lib/snippet";
-import { saveTimestamp, deleteTimestamp, formatMs } from "../lib/timestamps";
+import { saveTimestamp, deleteTimestamp, deleteAllTimestampsForTrack, formatMs } from "../lib/timestamps";
 import {
   getStoredToken,
   STORAGE_KEY,
@@ -30,6 +30,7 @@ import {
 import { trackIdFromSpotifyUri } from "../lib/spotify-web-play";
 import { webSdkReportsPlaying } from "../lib/web-spotify-playback";
 import { MAX_SNIPPETS_PER_TRACK } from "../lib/snippet-ui-utils";
+import { rememberPlaybackContext, withPlaybackContext } from "../lib/playback-context";
 
 export function useSnippetPlayback({
   setToken,
@@ -62,6 +63,8 @@ export function useSnippetPlayback({
   modalRingSeekRef,
   setModalClipNotice,
   setModalClipSaved,
+  trackLookup = {},
+  playlistTracks = {},
 }) {
   const ensureBrowserPlaybackDevice = useCallback(async () => {
     if (isNativeApp || isNativeCapacitor() || typeof window === "undefined") return null;
@@ -99,9 +102,16 @@ export function useSnippetPlayback({
   const jump = useCallback(
     async (trackOrUri, positionMs, playbackContext = null) => {
       const trackUri = typeof trackOrUri === "string" ? trackOrUri : trackOrUri?.uri;
-      const contextSource =
+      const rawContext =
         typeof trackOrUri === "object" && trackOrUri ? trackOrUri : playbackContext;
+      const contextSource = rawContext
+        ? withPlaybackContext(rawContext, { trackLookup, playlistTracks, playerState })
+        : null;
       if (!trackUri || trackUri.startsWith("spotify:local:")) return;
+
+      if (contextSource?.contextUri) {
+        rememberPlaybackContext(contextSource.contextUri);
+      }
 
       const intentTrackId = contextSource?.id ?? trackIdFromSpotifyUri(trackUri);
       if (intentTrackId) setPlaybackIntent(intentTrackId, contextSource);
@@ -311,6 +321,8 @@ export function useSnippetPlayback({
       webPlayerError,
       webPlayerIdRef,
       sdkPlayerRef,
+      trackLookup,
+      playlistTracks,
     ]
   );
 
@@ -560,14 +572,16 @@ export function useSnippetPlayback({
     if (!t) return;
     await transitionIntoSnippetIfNeeded({
       previousTrackId: playerState?.id ?? null,
-      startPlayback: () => skipToNext(t, playbackTargetDevice),
+      // Native: device IDs can be stale/wrong (e.g. web player). Let Spotify choose the active device.
+      startPlayback: () => skipToNext(t, isNativeCapacitor() ? null : playbackTargetDevice),
     });
   }, [playbackTargetDevice, playerState?.id, transitionIntoSnippetIfNeeded]);
 
   const handleSkipPrevious = useCallback(async () => {
     const t = getStoredToken();
     if (!t) return;
-    await skipToPrevious(t, playbackTargetDevice);
+    // Native: device IDs can be stale/wrong (e.g. web player). Let Spotify choose the active device.
+    await skipToPrevious(t, isNativeCapacitor() ? null : playbackTargetDevice);
     setTimeout(() => refreshPlayerSnapshot(), 350);
   }, [playbackTargetDevice, refreshPlayerSnapshot]);
 
@@ -724,10 +738,16 @@ export function useSnippetPlayback({
   const playTrackWithMode = useCallback(
     (track) => {
       if (!track?.uri || !track?.id) return;
-      primePlaybackTrack(track, resolvePlaybackPosition(track.id, 0));
-      jump(track, resolvePlaybackPosition(track.id, 0), track);
+      const contextual = withPlaybackContext(track, {
+        trackLookup,
+        playlistTracks,
+        playerState,
+      });
+      const positionMs = resolvePlaybackPosition(track.id, 0);
+      primePlaybackTrack(contextual, positionMs);
+      jump(contextual, positionMs, contextual);
     },
-    [jump, resolvePlaybackPosition, primePlaybackTrack]
+    [jump, resolvePlaybackPosition, primePlaybackTrack, trackLookup, playlistTracks, playerState]
   );
 
   const handleDelete = useCallback(async (trackId, index) => {
@@ -761,6 +781,24 @@ export function useSnippetPlayback({
     });
   }, [setAllTimestamps, setSelectedSnippetIndexByTrack]);
 
+  const handleDeleteTrackGroup = useCallback(async (trackId) => {
+    const t = getStoredToken();
+    if (!t || !trackId) return false;
+    const updated = await deleteAllTimestampsForTrack(t, trackId);
+    if (updated === null) return false;
+    setAllTimestamps((prev) => {
+      const next = { ...prev };
+      delete next[trackId];
+      return next;
+    });
+    setSelectedSnippetIndexByTrack((prev) => {
+      const next = { ...prev };
+      delete next[trackId];
+      return next;
+    });
+    return true;
+  }, [setAllTimestamps, setSelectedSnippetIndexByTrack]);
+
   return {
     jump,
     handlePlayPause,
@@ -784,5 +822,6 @@ export function useSnippetPlayback({
     primePlaybackTrack,
     playTrackWithMode,
     handleDelete,
+    handleDeleteTrackGroup,
   };
 }

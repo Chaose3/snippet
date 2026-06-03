@@ -59,6 +59,8 @@ export const TrackPlayerScreen = memo(function TrackPlayerScreen({ trackId }) {
       return;
     }
     if (lastTrackIdRef.current === trackId) return;
+    // In-player Up Next can set resolvedTrack before `?t=` / searchParams catch up.
+    if (lastTrackIdRef.current && lastTrackIdRef.current !== trackId) return;
     lastTrackIdRef.current = trackId;
     const fromLookup = trackLookup[trackId];
     if (fromLookup) {
@@ -306,6 +308,9 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
       pb.prefetchPlayerRoute?.();
       syncViewToTrack(track);
       playTrackWithMode(track);
+      void pb.refreshPlayerSnapshot?.();
+      pb.schedulePlayerRefresh?.(450);
+      window.setTimeout(() => pb.refreshPlayerSnapshot?.(), 1100);
     },
     [pb, syncViewToTrack, playTrackWithMode]
   );

@@ -14,15 +14,11 @@ const nextConfig = {
   env: {
     NEXT_PUBLIC_APP_VERSION: appVersion,
   },
+  /** Pin project root (avoids wrong root when ~/package-lock.json exists). */
+  outputFileTracingRoot: repoRoot,
   allowedDevOrigins: ["127.0.0.1", "localhost", ...extraDevOrigins],
   /** Avoid bundling Capacitor into server/static workers (native modules are client-only). */
   serverExternalPackages: ["@capacitor/app", "@capacitor/browser", "@capacitor/core"],
-  webpack: (config, { dev }) => {
-    if (dev) {
-      config.cache = false;
-    }
-    return config;
-  },
 };
 
 export default nextConfig;

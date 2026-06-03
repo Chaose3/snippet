@@ -16,11 +16,13 @@ export default function PlayerPage() {
   const pb = useAppPlayback();
   const { playerViewTrackId, setPlayerViewTrackId, playerNavPrimedTrackRef } = pb;
 
+  // Sync URL → context only when the query param changes (back/forward, deep link).
+  // Do NOT depend on playerViewTrackId: Up Next updates state + history.replaceState first;
+  // useSearchParams can still read the old `?t=` for a render and would revert the new track.
   useEffect(() => {
-    if (queryTrackId && queryTrackId !== playerViewTrackId) {
-      setPlayerViewTrackId(queryTrackId);
-    }
-  }, [queryTrackId, playerViewTrackId, setPlayerViewTrackId]);
+    if (!queryTrackId) return;
+    setPlayerViewTrackId(queryTrackId);
+  }, [queryTrackId, setPlayerViewTrackId]);
 
   const trackId = playerViewTrackId ?? queryTrackId ?? null;
 

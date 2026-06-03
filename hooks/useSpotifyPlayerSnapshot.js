@@ -11,6 +11,8 @@ import {
   playerStatePollEquivalent,
   queueTracksShallowEqual,
 } from "../lib/spotify-player-state-merge";
+import { syncWidgetNowPlaying } from "../lib/capacitor/widget-now-playing";
+import { rememberPlaybackContext } from "../lib/playback-context";
 
 const WEB_POLL_MS = 4000;
 const NATIVE_POLL_MS = 6000;
@@ -44,7 +46,14 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
       if (isNativeCapacitor()) {
         state = await fetchNativePlayerState();
       }
-      if (!state) {
+      // If native App Remote lags behind an in-flight intent (common on iOS),
+      // prefer Web API state so UI doesn't "stick" until navigation/refresh.
+      const intent = getPlaybackIntent();
+      const nativeLooksStaleDuringIntent = Boolean(
+        isNativeCapacitor() && intent && state?.id && state.id !== intent
+      );
+
+      if (!state || nativeLooksStaleDuringIntent) {
         state = await withFreshToken((accessToken) => getPlayerState(accessToken)).catch(() => null);
         if (!state && isNativeCapacitor()) {
           const current = await withFreshToken((accessToken) => getCurrentlyPlaying(accessToken)).catch(
@@ -56,12 +65,14 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
       queue = await withFreshToken((accessToken) => getQueue(accessToken)).catch(() => []);
 
       if (state) {
-        const intent = getPlaybackIntent();
         const staleDuringIntent = Boolean(intent && state.id !== intent);
         const sameTrack = lastSnapshotTrackIdRef.current === state.id;
         lastSnapshotTrackIdRef.current = state.id;
         if (state.id === intent) {
           clearPlaybackIntent(state.id);
+        }
+        if (state.contextUri) {
+          rememberPlaybackContext(state.contextUri);
         }
         setPlayerState((prev) => {
           const merged = mergePlayerState(prev, state);
@@ -195,6 +206,21 @@ export function useSpotifyPlayerSnapshot({ token, withFreshToken }) {
     setPlayerState(null);
     lastPollRef.current = null;
   }, []);
+
+  useEffect(() => {
+    if (!isNativeCapacitor()) return;
+    const pos = playerState?.name
+      ? (estimatedPosRef.current ?? playerState.positionMs ?? 0)
+      : 0;
+    syncWidgetNowPlaying(playerState, pos);
+  }, [
+    playerState?.id,
+    playerState?.name,
+    playerState?.artists,
+    playerState?.albumArt,
+    playerState?.isPlaying,
+    playerState?.positionMs,
+  ]);
 
   return {
     playerState,

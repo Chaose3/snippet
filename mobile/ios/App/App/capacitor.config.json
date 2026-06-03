@@ -3,7 +3,7 @@
 	"appName": "Snippet",
 	"webDir": "www",
 	"server": {
-		"url": "http://192.168.43.225:3000",
+		"url": "http://192.168.88.112:3000",
 		"cleartext": true,
 		"allowNavigation": [
 			"accounts.spotify.com"
@@ -15,6 +15,7 @@
 	"packageClassList": [
 		"AppPlugin",
 		"CAPBrowserPlugin",
-		"SpotifyBridgePlugin"
+		"SpotifyBridgePlugin",
+		"WidgetBridgePlugin"
 	]
 }

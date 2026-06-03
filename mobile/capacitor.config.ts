@@ -44,7 +44,7 @@ const config = {
     scheme: 'snippet',
   },
   // Local native plugin (must match class name); keep core plugins listed so sync does not drop them.
-  packageClassList: ['AppPlugin', 'CAPBrowserPlugin', 'SpotifyBridgePlugin'],
+  packageClassList: ['AppPlugin', 'CAPBrowserPlugin', 'SpotifyBridgePlugin', 'WidgetBridgePlugin'],
 } as CapacitorConfig;
 
 export default config;

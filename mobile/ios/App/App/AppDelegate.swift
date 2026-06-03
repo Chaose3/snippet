@@ -16,6 +16,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         } catch {
             NSLog("[AppDelegate] AVAudioSession setup failed: \(error.localizedDescription)")
         }
+        NowPlayingManager.configureRemoteCommandsIfNeeded()
         return true
     }
 

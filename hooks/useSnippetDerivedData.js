@@ -1,6 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { getBrowserPlaybackHelp } from "../lib/browser-playback-help";
 import { getPlaybackIntent } from "../lib/playback-intent";
+import {
+  buildSnippetGroups,
+  countTotalSnippets,
+  countTracksWithSnippets,
+} from "../lib/snippet-aggregates";
 
 export function useSnippetDerivedData({
   allTimestamps,
@@ -41,13 +46,18 @@ export function useSnippetDerivedData({
       lookup[t.id] = t;
     });
     if (playerState) {
+      const prev = lookup[playerState.id];
       lookup[playerState.id] = {
+        ...prev,
         id: playerState.id,
         name: playerState.name,
         uri: playerState.uri,
         artists: playerState.artists,
         albumArt: playerState.albumArt,
         durationMs: playerState.durationMs,
+        contextUri: prev?.contextUri ?? playerState.contextUri ?? null,
+        offsetUri: prev?.offsetUri ?? null,
+        offsetPosition: prev?.offsetPosition,
       };
     }
     (recentlyPlayedTracks || []).forEach((t) => {
@@ -72,22 +82,33 @@ export function useSnippetDerivedData({
     lastPlayerTrackIdRef.current = playerState.id;
   }, [playerState?.id, trackLookup]);
 
+  const totalSnippetCount = useMemo(() => countTotalSnippets(allTimestamps), [allTimestamps]);
+  const tracksWithSnippetsCount = useMemo(
+    () => countTracksWithSnippets(allTimestamps),
+    [allTimestamps]
+  );
+
+  const snippetGroups = useMemo(
+    () => buildSnippetGroups(allTimestamps, trackLookup),
+    [allTimestamps, trackLookup]
+  );
+
   const snippetTracks = useMemo(
     () =>
-      Object.entries(allTimestamps)
-        .map(([trackId, tss]) => ({
-          trackId,
-          track: trackLookup[trackId] ?? null,
-          tss,
+      snippetGroups
+        .map((group) => ({
+          trackId: group.trackId,
+          track: group.track,
+          tss: group.tss,
           latestCreatedAt: Math.max(
-            ...tss.map((ts) => {
+            ...group.tss.map((ts) => {
               const created = ts.createdAt ? Date.parse(ts.createdAt) : 0;
               return Number.isNaN(created) ? 0 : created;
             })
           ),
         }))
         .sort((a, b) => b.latestCreatedAt - a.latestCreatedAt),
-    [allTimestamps, trackLookup]
+    [snippetGroups]
   );
 
   const recentPlaylists = useMemo(
@@ -120,6 +141,9 @@ export function useSnippetDerivedData({
     selectedNowPlayingSnippetIndex,
     selectedNowPlayingSnippet,
     trackLookup,
+    totalSnippetCount,
+    tracksWithSnippetsCount,
+    snippetGroups,
     snippetTracks,
     prioritizedPlaylists,
     remainingPlaylists,

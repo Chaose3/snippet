@@ -11,6 +11,12 @@ import {
 } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { fetchAllTimestamps } from "../../lib/timestamps";
+import {
+  clearCachedTimestamps,
+  loadCachedTimestamps,
+  mergeTimestampMaps,
+  saveCachedTimestamps,
+} from "../../lib/snippet-timestamps-cache";
 import { notifyAuthComplete } from "../../lib/auth-events";
 import {
   clearLegacyAppRemoteSession,
@@ -35,6 +41,7 @@ import { useSnippetLibrary } from "../../hooks/useSnippetLibrary";
 import { useSpotifySearchTab } from "../../hooks/useSpotifySearchTab";
 import { useSnippetDerivedData } from "../../hooks/useSnippetDerivedData";
 import { useSnippetPlayback } from "../../hooks/useSnippetPlayback";
+import { useWidgetDeepLinks } from "../../hooks/useWidgetDeepLinks";
 import { AuthProvider } from "../../contexts/AuthContext";
 import { AppPlaybackContext } from "../../contexts/AppPlaybackContext";
 import { AppSearchContext } from "../../contexts/AppSearchContext";
@@ -187,6 +194,9 @@ export function AppShell({ children }) {
     selectedNowPlayingSnippetIndex,
     selectedNowPlayingSnippet,
     trackLookup,
+    totalSnippetCount,
+    tracksWithSnippetsCount,
+    snippetGroups,
     snippetTracks,
     prioritizedPlaylists,
     remainingPlaylists,
@@ -228,6 +238,7 @@ export function AppShell({ children }) {
     primePlaybackTrack,
     playTrackWithMode,
     handleDelete,
+    handleDeleteTrackGroup,
   } = useSnippetPlayback({
     setToken,
     doRefresh,
@@ -259,15 +270,46 @@ export function AppShell({ children }) {
     modalRingSeekRef,
     setModalClipNotice,
     setModalClipSaved,
+    trackLookup,
+    playlistTracks,
+  });
+
+  useWidgetDeepLinks({
+    playerState,
+    handlePlayPause,
+    handleSkipNext,
+    handleSkipPrevious,
+    handleModalClip,
+    refreshPlayerSnapshot,
+    setPlayerViewTrackId,
+    router,
   });
 
   useEffect(() => {
     if (!token) {
       setAllTimestamps({});
+      clearCachedTimestamps();
       return;
     }
-    fetchAllTimestamps(token).then(setAllTimestamps);
+    const cached = loadCachedTimestamps();
+    if (Object.keys(cached).length > 0) {
+      setAllTimestamps(cached);
+    }
+    fetchAllTimestamps(token)
+      .then((remote) => {
+        const merged = mergeTimestampMaps(cached, remote);
+        setAllTimestamps(merged);
+        saveCachedTimestamps(merged);
+      })
+      .catch(() => {
+        if (Object.keys(cached).length > 0) setAllTimestamps(cached);
+      });
   }, [token]);
+
+  useEffect(() => {
+    if (!token) return;
+    saveCachedTimestamps(allTimestamps);
+  }, [allTimestamps, token]);
 
   useLayoutEffect(() => {
     setHydrated(true);
@@ -456,8 +498,12 @@ export function AppShell({ children }) {
       handleSelectSnippet,
       jump,
       handleDelete,
+      handleDeleteTrackGroup,
       snippetsOpen,
       setSnippetsOpen,
+      totalSnippetCount,
+      tracksWithSnippetsCount,
+      snippetGroups,
       snippetTracks,
       playlists,
       prioritizedPlaylists,
@@ -545,7 +591,11 @@ export function AppShell({ children }) {
       handleSelectSnippet,
       jump,
       handleDelete,
+      handleDeleteTrackGroup,
       snippetsOpen,
+      totalSnippetCount,
+      tracksWithSnippetsCount,
+      snippetGroups,
       snippetTracks,
       playlists,
       prioritizedPlaylists,
@@ -693,6 +743,7 @@ export function AppShell({ children }) {
                 activeTab={activeTab}
                 pressedTab={pressedTab}
                 onTabPress={handleTabPress}
+                totalSnippetCount={totalSnippetCount}
               />
             )}
           </main>

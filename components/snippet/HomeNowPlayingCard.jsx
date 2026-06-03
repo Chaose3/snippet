@@ -19,7 +19,7 @@ export const HomeNowPlayingCard = memo(function HomeNowPlayingCard({
   handleDelete,
   snippetsOpen,
   setSnippetsOpen,
-  snippetTrackCount,
+  totalSnippetCount,
 }) {
   return (
     <div style={s.card}>
@@ -77,10 +77,14 @@ export const HomeNowPlayingCard = memo(function HomeNowPlayingCard({
           <button style={s.sectionHeader} onClick={() => setSnippetsOpen((v) => !v)}>
             <div>
               <p style={s.sectionTitle}>Your Snippets</p>
-              <p style={s.sectionSubtle}>Organized by most recent moments</p>
+              <p style={s.sectionSubtle}>
+                {totalSnippetCount > 0
+                  ? "Current song below · all snippets in the Snippets tab"
+                  : "Save moments while a track is playing"}
+              </p>
             </div>
             <div style={s.sectionHeaderRight}>
-              <span style={s.sectionMeta}>{snippetTrackCount}</span>
+              <span style={s.sectionMeta}>{totalSnippetCount}</span>
               <span style={{ ...s.chevron, fontSize: "0.85rem" }}>{snippetsOpen ? "▲" : "▼"}</span>
             </div>
           </button>

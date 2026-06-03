@@ -29,7 +29,7 @@ export default function HomePage() {
     handleDelete,
     snippetsOpen,
     setSnippetsOpen,
-    snippetTracks,
+    totalSnippetCount,
     playlists,
     prioritizedPlaylists,
     remainingPlaylists,
@@ -81,7 +81,7 @@ export default function HomePage() {
       handleDelete={handleDelete}
       snippetsOpen={snippetsOpen}
       setSnippetsOpen={setSnippetsOpen}
-      snippetTracks={snippetTracks}
+      totalSnippetCount={totalSnippetCount}
       playlists={playlists}
       prioritizedPlaylists={prioritizedPlaylists}
       remainingPlaylists={remainingPlaylists}

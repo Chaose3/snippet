@@ -52,6 +52,12 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             name: UIApplication.didBecomeActiveNotification,
             object: nil
         )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleNowPlayingRemoteCommand(_:)),
+            name: .snippetNowPlayingRemoteCommand,
+            object: nil
+        )
     }
 
     deinit {
@@ -76,6 +82,39 @@ public class SpotifyBridgePlugin: CAPPlugin, CAPBridgedPlugin {
             if remote.connectionParameters.accessToken != nil && !remote.isConnected {
                 remote.connect()
             }
+        }
+    }
+
+    @objc private func handleNowPlayingRemoteCommand(_ notification: Notification) {
+        DispatchQueue.main.async { [weak self] in
+            self?.handleNowPlayingRemoteCommandOnMain(notification)
+        }
+    }
+
+    private func handleNowPlayingRemoteCommandOnMain(_ notification: Notification) {
+        guard let action = notification.userInfo?["action"] as? String else { return }
+        guard let playerAPI = appRemote?.playerAPI, appRemote?.isConnected == true else { return }
+
+        switch action {
+        case "play":
+            playerAPI.resume { _, _ in }
+        case "pause":
+            playerAPI.pause { _, _ in }
+        case "toggle":
+            playerAPI.getPlayerState { result, _ in
+                guard let state = result as? SPTAppRemotePlayerState else { return }
+                if state.isPaused {
+                    playerAPI.resume { _, _ in }
+                } else {
+                    playerAPI.pause { _, _ in }
+                }
+            }
+        case "next":
+            playerAPI.skip(toNext: { _, _ in })
+        case "previous":
+            playerAPI.skip(toPrevious: { _, _ in })
+        default:
+            break
         }
     }
 
