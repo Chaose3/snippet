@@ -17,6 +17,14 @@ import {
   mergeTimestampMaps,
   saveCachedTimestamps,
 } from "../../lib/snippet-timestamps-cache";
+import {
+  clearCachedTrackMeta,
+  loadCachedTrackMeta,
+  mergeTrackMetaMaps,
+  pruneTrackMeta,
+  saveCachedTrackMeta,
+} from "../../lib/snippet-track-meta-cache";
+import { trackMetaFromSource } from "../../lib/snippet-track-storage";
 import { notifyAuthComplete } from "../../lib/auth-events";
 import {
   clearLegacyAppRemoteSession,
@@ -146,6 +154,7 @@ export function AppShell({ children }) {
   });
 
   const [allTimestamps, setAllTimestamps] = useState({});
+  const [snippetTrackMeta, setSnippetTrackMeta] = useState({});
   const [labelInput, setLabelInput] = useState("");
   const [selectedSnippetIndexByTrack, setSelectedSnippetIndexByTrack] = useState({});
   const [snippetModeEnabled, setSnippetModeEnabled] = useState(false);
@@ -206,6 +215,7 @@ export function AppShell({ children }) {
     browserPlaybackHelp,
   } = useSnippetDerivedData({
     allTimestamps,
+    snippetTrackMeta,
     playerState,
     playlistTracks,
     likedTracks,
@@ -272,6 +282,7 @@ export function AppShell({ children }) {
     setModalClipSaved,
     trackLookup,
     playlistTracks,
+    setSnippetTrackMeta,
   });
 
   useWidgetDeepLinks({
@@ -288,28 +299,61 @@ export function AppShell({ children }) {
   useEffect(() => {
     if (!token) {
       setAllTimestamps({});
+      setSnippetTrackMeta({});
       clearCachedTimestamps();
+      clearCachedTrackMeta();
       return;
     }
     const cached = loadCachedTimestamps();
+    const cachedMeta = loadCachedTrackMeta();
     if (Object.keys(cached).length > 0) {
       setAllTimestamps(cached);
     }
+    if (Object.keys(cachedMeta).length > 0) {
+      setSnippetTrackMeta(pruneTrackMeta(cachedMeta, cached));
+    }
     fetchAllTimestamps(token)
-      .then((remote) => {
-        const merged = mergeTimestampMaps(cached, remote);
+      .then(({ timestamps: remoteTs, trackMeta: remoteMeta }) => {
+        const merged = mergeTimestampMaps(cached, remoteTs);
+        const mergedMeta = pruneTrackMeta(
+          mergeTrackMetaMaps(cachedMeta, remoteMeta),
+          merged
+        );
         setAllTimestamps(merged);
+        setSnippetTrackMeta(mergedMeta);
         saveCachedTimestamps(merged);
+        saveCachedTrackMeta(mergedMeta);
       })
       .catch(() => {
         if (Object.keys(cached).length > 0) setAllTimestamps(cached);
+        if (Object.keys(cachedMeta).length > 0) {
+          setSnippetTrackMeta(pruneTrackMeta(cachedMeta, cached));
+        }
       });
   }, [token]);
 
   useEffect(() => {
     if (!token) return;
     saveCachedTimestamps(allTimestamps);
-  }, [allTimestamps, token]);
+    const pruned = pruneTrackMeta(snippetTrackMeta, allTimestamps);
+    const prunedKey = Object.keys(pruned).sort().join(",");
+    const metaKey = Object.keys(snippetTrackMeta).sort().join(",");
+    if (prunedKey !== metaKey) {
+      setSnippetTrackMeta(pruned);
+    }
+    saveCachedTrackMeta(pruned);
+  }, [allTimestamps, snippetTrackMeta, token]);
+
+  /** Backfill titles for older snippets when that track plays again. */
+  useEffect(() => {
+    if (!playerState?.id || !playerState.name) return;
+    const tss = allTimestamps[playerState.id];
+    if (!Array.isArray(tss) || tss.length === 0) return;
+    if (snippetTrackMeta[playerState.id]?.name) return;
+    const meta = trackMetaFromSource(playerState);
+    if (!meta) return;
+    setSnippetTrackMeta((prev) => ({ ...prev, [playerState.id]: meta }));
+  }, [playerState?.id, playerState?.name, playerState?.artists, allTimestamps, snippetTrackMeta]);
 
   useLayoutEffect(() => {
     setHydrated(true);

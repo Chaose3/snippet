@@ -9,6 +9,7 @@ import {
 
 export function useSnippetDerivedData({
   allTimestamps,
+  snippetTrackMeta = {},
   playerState,
   playlistTracks,
   likedTracks,
@@ -66,8 +67,30 @@ export function useSnippetDerivedData({
     (spotifyResults || []).forEach((t) => {
       if (t?.id) lookup[t.id] = lookup[t.id] ?? t;
     });
+    for (const trackId of Object.keys(allTimestamps || {})) {
+      const saved = snippetTrackMeta[trackId];
+      if (!saved?.name) continue;
+      const live = lookup[trackId];
+      lookup[trackId] = {
+        id: trackId,
+        uri: live?.uri || saved.uri || `spotify:track:${trackId}`,
+        name: live?.name || saved.name,
+        artists: live?.artists || saved.artists || "",
+        albumArt: live?.albumArt ?? saved.albumArt ?? null,
+        durationMs: live?.durationMs ?? saved.durationMs,
+        ...live,
+      };
+    }
     return lookup;
-  }, [flattenedPlaylistTracks, likedTracks, playerState, recentlyPlayedTracks, spotifyResults]);
+  }, [
+    allTimestamps,
+    snippetTrackMeta,
+    flattenedPlaylistTracks,
+    likedTracks,
+    playerState,
+    recentlyPlayedTracks,
+    spotifyResults,
+  ]);
 
   useEffect(() => {
     if (!playerState?.id) return;
@@ -89,8 +112,8 @@ export function useSnippetDerivedData({
   );
 
   const snippetGroups = useMemo(
-    () => buildSnippetGroups(allTimestamps, trackLookup),
-    [allTimestamps, trackLookup]
+    () => buildSnippetGroups(allTimestamps, trackLookup, snippetTrackMeta),
+    [allTimestamps, trackLookup, snippetTrackMeta]
   );
 
   const snippetTracks = useMemo(

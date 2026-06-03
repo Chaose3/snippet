@@ -13,6 +13,7 @@ import {
   transferPlayback,
 } from "../lib/snippet";
 import { saveTimestamp, deleteTimestamp, deleteAllTimestampsForTrack, formatMs } from "../lib/timestamps";
+import { trackMetaFromSource } from "../lib/snippet-track-storage";
 import {
   getStoredToken,
   STORAGE_KEY,
@@ -65,6 +66,7 @@ export function useSnippetPlayback({
   setModalClipSaved,
   trackLookup = {},
   playlistTracks = {},
+  setSnippetTrackMeta,
 }) {
   const ensureBrowserPlaybackDevice = useCallback(async () => {
     if (isNativeApp || isNativeCapacitor() || typeof window === "undefined") return null;
@@ -654,9 +656,19 @@ export function useSnippetPlayback({
     if (!t) return false;
     const label = labelInput.trim() || null;
     try {
-      const updated = await saveTimestamp(t, playerState.id, Math.floor(estimatedPosRef.current), label);
+      const meta = trackMetaFromSource(playerState);
+      const updated = await saveTimestamp(
+        t,
+        playerState.id,
+        Math.floor(estimatedPosRef.current),
+        label,
+        meta
+      );
       if (updated) {
         setAllTimestamps((prev) => ({ ...prev, [playerState.id]: updated }));
+        if (meta && setSnippetTrackMeta) {
+          setSnippetTrackMeta((prev) => ({ ...prev, [playerState.id]: meta }));
+        }
         setSelectedSnippetIndexByTrack((prev) => ({
           ...prev,
           [playerState.id]: updated.length - 1,
@@ -672,7 +684,15 @@ export function useSnippetPlayback({
       console.warn("[saveTimestamp] failed", err);
       return false;
     }
-  }, [estimatedPosRef, labelInput, playerState, setAllTimestamps, setLabelInput, setSelectedSnippetIndexByTrack]);
+  }, [
+    estimatedPosRef,
+    labelInput,
+    playerState,
+    setAllTimestamps,
+    setSnippetTrackMeta,
+    setLabelInput,
+    setSelectedSnippetIndexByTrack,
+  ]);
 
   const handleModalClip = useCallback(async () => {
     const saved = await handleSaveTimestamp();
@@ -760,6 +780,13 @@ export function useSnippetPlayback({
         next[trackId] = updated;
       } else {
         delete next[trackId];
+        if (setSnippetTrackMeta) {
+          setSnippetTrackMeta((m) => {
+            const nextMeta = { ...m };
+            delete nextMeta[trackId];
+            return nextMeta;
+          });
+        }
       }
       return next;
     });
@@ -779,7 +806,7 @@ export function useSnippetPlayback({
       }
       return next;
     });
-  }, [setAllTimestamps, setSelectedSnippetIndexByTrack]);
+  }, [setAllTimestamps, setSelectedSnippetIndexByTrack, setSnippetTrackMeta]);
 
   const handleDeleteTrackGroup = useCallback(async (trackId) => {
     const t = getStoredToken();
@@ -791,13 +818,20 @@ export function useSnippetPlayback({
       delete next[trackId];
       return next;
     });
+    if (setSnippetTrackMeta) {
+      setSnippetTrackMeta((prev) => {
+        const next = { ...prev };
+        delete next[trackId];
+        return next;
+      });
+    }
     setSelectedSnippetIndexByTrack((prev) => {
       const next = { ...prev };
       delete next[trackId];
       return next;
     });
     return true;
-  }, [setAllTimestamps, setSelectedSnippetIndexByTrack]);
+  }, [setAllTimestamps, setSelectedSnippetIndexByTrack, setSnippetTrackMeta]);
 
   return {
     jump,

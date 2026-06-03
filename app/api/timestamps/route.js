@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { redis } from "../../../lib/db";
+import { readTrackEntry, serializeTrackEntry, trackMetaFromSource } from "../../../lib/snippet-track-storage";
 
 const MAX_SNIPPETS_PER_TRACK = 3;
 
@@ -18,35 +19,37 @@ function redisKey(userId) {
   return `ts:${userId}`;
 }
 
-// GET /api/timestamps — returns { [trackId]: [{positionMs, label, createdAt?}] }
+// GET /api/timestamps — { timestamps: { [trackId]: [...] }, trackMeta: { [trackId]: { name, artists, ... } } }
 export async function GET(request) {
   const userId = await resolveUserId(request.headers.get("Authorization"));
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
   const all = await redis.hgetall(redisKey(userId));
-  if (!all) return NextResponse.json({});
+  if (!all) return NextResponse.json({ timestamps: {}, trackMeta: {} });
 
-  const result = {};
+  const timestamps = {};
+  const trackMeta = {};
   for (const [trackId, val] of Object.entries(all)) {
-    result[trackId] = typeof val === "string" ? JSON.parse(val) : val;
+    const { timestamps: tss, meta } = readTrackEntry(val);
+    if (tss.length > 0) timestamps[trackId] = tss;
+    if (meta?.name) trackMeta[trackId] = meta;
   }
-  return NextResponse.json(result);
+  return NextResponse.json({ timestamps, trackMeta });
 }
 
-// POST /api/timestamps — body: { trackId, positionMs, label }
+// POST /api/timestamps — body: { trackId, positionMs, label, trackMeta? }
 export async function POST(request) {
   const userId = await resolveUserId(request.headers.get("Authorization"));
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const { trackId, positionMs, label } = await request.json();
+  const { trackId, positionMs, label, trackMeta: incomingMeta } = await request.json();
   if (!trackId || positionMs == null) {
     return NextResponse.json({ error: "Missing trackId or positionMs" }, { status: 400 });
   }
 
   const existing = await redis.hget(redisKey(userId), trackId);
-  const timestamps = existing
-    ? (typeof existing === "string" ? JSON.parse(existing) : existing)
-    : [];
+  const { timestamps, meta: existingMeta } = readTrackEntry(existing);
+  const meta = trackMetaFromSource(incomingMeta) ?? existingMeta;
 
   if (timestamps.length >= MAX_SNIPPETS_PER_TRACK) {
     return NextResponse.json(
@@ -61,7 +64,9 @@ export async function POST(request) {
   timestamps.push({ positionMs, label: label || null, createdAt: new Date().toISOString() });
   timestamps.sort((a, b) => a.positionMs - b.positionMs);
 
-  await redis.hset(redisKey(userId), { [trackId]: JSON.stringify(timestamps) });
+  await redis.hset(redisKey(userId), {
+    [trackId]: serializeTrackEntry(timestamps, meta),
+  });
   return NextResponse.json(timestamps);
 }
 
@@ -76,9 +81,7 @@ export async function PATCH(request) {
   }
 
   const existing = await redis.hget(redisKey(userId), trackId);
-  const timestamps = existing
-    ? (typeof existing === "string" ? JSON.parse(existing) : existing)
-    : [];
+  const { timestamps, meta } = readTrackEntry(existing);
 
   if (index < 0 || index >= timestamps.length) {
     return NextResponse.json({ error: "Index out of range" }, { status: 400 });
@@ -86,7 +89,7 @@ export async function PATCH(request) {
 
   timestamps[index].label = label || null;
 
-  await redis.hset(redisKey(userId), { [trackId]: JSON.stringify(timestamps) });
+  await redis.hset(redisKey(userId), { [trackId]: serializeTrackEntry(timestamps, meta) });
   return NextResponse.json(timestamps);
 }
 
@@ -110,16 +113,14 @@ export async function DELETE(request) {
   }
 
   const existing = await redis.hget(redisKey(userId), trackId);
-  const timestamps = existing
-    ? (typeof existing === "string" ? JSON.parse(existing) : existing)
-    : [];
+  const { timestamps, meta } = readTrackEntry(existing);
 
   timestamps.splice(index, 1);
 
   if (timestamps.length === 0) {
     await redis.hdel(redisKey(userId), trackId);
   } else {
-    await redis.hset(redisKey(userId), { [trackId]: JSON.stringify(timestamps) });
+    await redis.hset(redisKey(userId), { [trackId]: serializeTrackEntry(timestamps, meta) });
   }
   return NextResponse.json(timestamps);
 }
