@@ -325,32 +325,30 @@ const TrackPlayerScreenBody = memo(function TrackPlayerScreenBody({
   const previousTrack = model?.previousTrack ?? null;
 
   const onRequestNext = useCallback(async () => {
-    if (isCurrentTrack) {
-      if (nextTrack) syncViewToTrack(nextTrack);
+    if (nextTrack) syncViewToTrack(nextTrack);
+    if (isCurrentTrack || !nextTrack) {
       await handleSkipNext();
       return;
     }
-    if (nextTrack) {
-      syncViewToTrack(nextTrack);
-      playTrackWithMode(nextTrack);
-      return;
-    }
-    await handleSkipNext();
+    playTrackWithMode(nextTrack);
   }, [isCurrentTrack, nextTrack, handleSkipNext, syncViewToTrack, playTrackWithMode]);
 
   const onRequestPrevious = useCallback(async () => {
-    if (isCurrentTrack) {
-      if (previousTrack) syncViewToTrack(previousTrack);
+    const shouldRestartCurrent = isCurrentTrack && estimatedPos > 3000;
+    if (!shouldRestartCurrent && previousTrack) syncViewToTrack(previousTrack);
+    if (isCurrentTrack || !previousTrack) {
       await handleSkipPrevious();
       return;
     }
-    if (previousTrack) {
-      syncViewToTrack(previousTrack);
-      playTrackWithMode(previousTrack);
-      return;
-    }
-    await handleSkipPrevious();
-  }, [isCurrentTrack, previousTrack, handleSkipPrevious, syncViewToTrack, playTrackWithMode]);
+    playTrackWithMode(previousTrack);
+  }, [
+    estimatedPos,
+    isCurrentTrack,
+    previousTrack,
+    handleSkipPrevious,
+    syncViewToTrack,
+    playTrackWithMode,
+  ]);
 
   if (!model) {
     return <PlayerRouteSkeleton hintTrack={resolvedTrack} />;

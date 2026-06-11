@@ -31,7 +31,11 @@ import {
 import { trackIdFromSpotifyUri } from "../lib/spotify-web-play";
 import { webSdkReportsPlaying } from "../lib/web-spotify-playback";
 import { MAX_SNIPPETS_PER_TRACK } from "../lib/snippet-ui-utils";
-import { rememberPlaybackContext, withPlaybackContext } from "../lib/playback-context";
+import {
+  findInPlaylistTracks,
+  rememberPlaybackContext,
+  withPlaybackContext,
+} from "../lib/playback-context";
 
 export function useSnippetPlayback({
   setToken,
@@ -569,7 +573,86 @@ export function useSnippetPlayback({
     setTimeout(() => refreshPlayerSnapshot(), 250);
   }, [playerState, playbackTargetDevice, refreshPlayerSnapshot, setPlayerState]);
 
+  const resolvePlaylistAdjacentTrack = useCallback(
+    (direction) => {
+      const anchorId = playerState?.id;
+      if (!anchorId) return null;
+      const inPlaylist = findInPlaylistTracks(anchorId, playlistTracks);
+      if (!inPlaylist) return null;
+      const targetIndex = direction === "next" ? inPlaylist.index + 1 : inPlaylist.index - 1;
+      const target = inPlaylist.tracks[targetIndex];
+      if (!target) return null;
+      return withPlaybackContext(target, { trackLookup, playlistTracks, playerState });
+    },
+    [playerState, playlistTracks, trackLookup]
+  );
+
+  const resolvePlaybackPosition = useCallback(
+    (trackId, fallbackPositionMs = 0) => {
+      if (!snippetModeEnabled || !trackId) return fallbackPositionMs;
+      const snippets = allTimestamps[trackId] || [];
+      if (snippets.length === 0) return fallbackPositionMs;
+      const selectedIndex = Math.min(
+        selectedSnippetIndexByTrack[trackId] ?? 0,
+        Math.max(0, snippets.length - 1)
+      );
+      return snippets[selectedIndex]?.positionMs ?? fallbackPositionMs;
+    },
+    [allTimestamps, selectedSnippetIndexByTrack, snippetModeEnabled]
+  );
+
+  const primePlaybackTrack = useCallback(
+    (track, positionMs = 0) => {
+      if (!track?.id || !setPlayerState) return;
+      setPlaybackIntent(track.id, track);
+      lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
+      setEstimatedPos(positionMs);
+      setPlayerState((prev) => {
+        if (prev?.id === track.id && prev.isPlaying) {
+          return { ...prev, positionMs, isPlaying: true };
+        }
+        return {
+          id: track.id,
+          name: track.name ?? prev?.name ?? "",
+          uri: track.uri ?? prev?.uri ?? null,
+          artists: track.artists ?? prev?.artists ?? "",
+          albumArt: track.albumArt ?? prev?.albumArt ?? null,
+          durationMs: track.durationMs ?? prev?.durationMs ?? 0,
+          positionMs,
+          isPlaying: true,
+          shuffle: prev?.shuffle ?? false,
+          repeatMode: prev?.repeatMode ?? "off",
+          volumePercent: prev?.volumePercent ?? 100,
+        };
+      });
+    },
+    [setPlayerState, setEstimatedPos, lastPollRef]
+  );
+
+  const playTrackWithMode = useCallback(
+    (track) => {
+      if (!track?.uri || !track?.id) return;
+      const contextual = withPlaybackContext(track, {
+        trackLookup,
+        playlistTracks,
+        playerState,
+      });
+      const positionMs = resolvePlaybackPosition(track.id, 0);
+      primePlaybackTrack(contextual, positionMs);
+      jump(contextual, positionMs, contextual);
+    },
+    [jump, resolvePlaybackPosition, primePlaybackTrack, trackLookup, playlistTracks, playerState]
+  );
+
   const handleSkipNext = useCallback(async () => {
+    if (!playerState?.shuffle) {
+      const nextInPlaylist = resolvePlaylistAdjacentTrack("next");
+      if (nextInPlaylist?.uri) {
+        playTrackWithMode(nextInPlaylist);
+        return;
+      }
+    }
+
     const t = getStoredToken();
     if (!t) return;
     await transitionIntoSnippetIfNeeded({
@@ -577,15 +660,42 @@ export function useSnippetPlayback({
       // Native: device IDs can be stale/wrong (e.g. web player). Let Spotify choose the active device.
       startPlayback: () => skipToNext(t, isNativeCapacitor() ? null : playbackTargetDevice),
     });
-  }, [playbackTargetDevice, playerState?.id, transitionIntoSnippetIfNeeded]);
+  }, [
+    playbackTargetDevice,
+    playTrackWithMode,
+    playerState?.id,
+    playerState?.shuffle,
+    resolvePlaylistAdjacentTrack,
+    transitionIntoSnippetIfNeeded,
+  ]);
 
   const handleSkipPrevious = useCallback(async () => {
     const t = getStoredToken();
     if (!t) return;
+
+    const posMs = estimatedPosRef.current ?? playerState?.positionMs ?? 0;
+    const shouldRestartCurrent = posMs > 3000;
+
+    if (!shouldRestartCurrent && !playerState?.shuffle) {
+      const prevInPlaylist = resolvePlaylistAdjacentTrack("previous");
+      if (prevInPlaylist?.uri) {
+        playTrackWithMode(prevInPlaylist);
+        return;
+      }
+    }
+
     // Native: device IDs can be stale/wrong (e.g. web player). Let Spotify choose the active device.
     await skipToPrevious(t, isNativeCapacitor() ? null : playbackTargetDevice);
     setTimeout(() => refreshPlayerSnapshot(), 350);
-  }, [playbackTargetDevice, refreshPlayerSnapshot]);
+  }, [
+    estimatedPosRef,
+    playbackTargetDevice,
+    playTrackWithMode,
+    playerState?.positionMs,
+    playerState?.shuffle,
+    refreshPlayerSnapshot,
+    resolvePlaylistAdjacentTrack,
+  ]);
 
   const handleQuickPlayPlaylist = useCallback(
     async (playlist) => {
@@ -712,63 +822,6 @@ export function useSnippetPlayback({
   const handleSelectSnippet = useCallback((trackId, index) => {
     setSelectedSnippetIndexByTrack((prev) => ({ ...prev, [trackId]: index }));
   }, [setSelectedSnippetIndexByTrack]);
-
-  const resolvePlaybackPosition = useCallback(
-    (trackId, fallbackPositionMs = 0) => {
-      if (!snippetModeEnabled || !trackId) return fallbackPositionMs;
-      const snippets = allTimestamps[trackId] || [];
-      if (snippets.length === 0) return fallbackPositionMs;
-      const selectedIndex = Math.min(
-        selectedSnippetIndexByTrack[trackId] ?? 0,
-        Math.max(0, snippets.length - 1)
-      );
-      return snippets[selectedIndex]?.positionMs ?? fallbackPositionMs;
-    },
-    [allTimestamps, selectedSnippetIndexByTrack, snippetModeEnabled]
-  );
-
-  const primePlaybackTrack = useCallback(
-    (track, positionMs = 0) => {
-      if (!track?.id || !setPlayerState) return;
-      setPlaybackIntent(track.id, track);
-      lastPollRef.current = { time: Date.now(), positionMs, isPlaying: true };
-      setEstimatedPos(positionMs);
-      setPlayerState((prev) => {
-        if (prev?.id === track.id && prev.isPlaying) {
-          return { ...prev, positionMs, isPlaying: true };
-        }
-        return {
-          id: track.id,
-          name: track.name ?? prev?.name ?? "",
-          uri: track.uri ?? prev?.uri ?? null,
-          artists: track.artists ?? prev?.artists ?? "",
-          albumArt: track.albumArt ?? prev?.albumArt ?? null,
-          durationMs: track.durationMs ?? prev?.durationMs ?? 0,
-          positionMs,
-          isPlaying: true,
-          shuffle: prev?.shuffle ?? false,
-          repeatMode: prev?.repeatMode ?? "off",
-          volumePercent: prev?.volumePercent ?? 100,
-        };
-      });
-    },
-    [setPlayerState, setEstimatedPos, lastPollRef]
-  );
-
-  const playTrackWithMode = useCallback(
-    (track) => {
-      if (!track?.uri || !track?.id) return;
-      const contextual = withPlaybackContext(track, {
-        trackLookup,
-        playlistTracks,
-        playerState,
-      });
-      const positionMs = resolvePlaybackPosition(track.id, 0);
-      primePlaybackTrack(contextual, positionMs);
-      jump(contextual, positionMs, contextual);
-    },
-    [jump, resolvePlaybackPosition, primePlaybackTrack, trackLookup, playlistTracks, playerState]
-  );
 
   const handleDelete = useCallback(async (trackId, index) => {
     const t = getStoredToken();
