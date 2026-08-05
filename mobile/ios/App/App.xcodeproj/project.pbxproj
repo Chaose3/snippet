@@ -20,11 +20,11 @@
 		9A6A6B7F2DDBF0C100A1B2C3 /* MainViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6A6B7E2DDBF0C100A1B2C3 /* MainViewController.swift */; };
 		B1W1D3E41FED796500168501 /* WidgetNowPlayingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED796500168508 /* WidgetNowPlayingStore.swift */; };
 		B1W1D3E41FED796500168502 /* WidgetBridgePlugin.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED796500168509 /* WidgetBridgePlugin.swift */; };
-		C2N0P1A21FED796500168601 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2N0P1A21FED796500168602 /* NowPlayingManager.swift */; };
 		B1W1D3E41FED796500168503 /* SnippetWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED79650016850A /* SnippetWidgetBundle.swift */; };
 		B1W1D3E41FED796500168504 /* SnippetNowPlayingWidget.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED79650016850B /* SnippetNowPlayingWidget.swift */; };
 		B1W1D3E41FED796500168505 /* WidgetNowPlayingStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED796500168508 /* WidgetNowPlayingStore.swift */; };
 		B1W1D3E41FED796500168506 /* SnippetWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = B1W1D3E41FED796500168507 /* SnippetWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		C2N0P1A21FED796500168601 /* NowPlayingManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C2N0P1A21FED796500168602 /* NowPlayingManager.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -67,13 +67,13 @@
 		B1W1D3E41FED796500168507 /* SnippetWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = SnippetWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		B1W1D3E41FED796500168508 /* WidgetNowPlayingStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetNowPlayingStore.swift; sourceTree = "<group>"; };
 		B1W1D3E41FED796500168509 /* WidgetBridgePlugin.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetBridgePlugin.swift; sourceTree = "<group>"; };
-		C2N0P1A21FED796500168602 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		B1W1D3E41FED79650016850A /* SnippetWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetWidgetBundle.swift; sourceTree = "<group>"; };
 		B1W1D3E41FED79650016850B /* SnippetNowPlayingWidget.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnippetNowPlayingWidget.swift; sourceTree = "<group>"; };
 		B1W1D3E41FED79650016850C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B1W1D3E41FED796500168519 /* SnippetWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SnippetWidget.entitlements; sourceTree = "<group>"; };
+		C2N0P1A21FED796500168602 /* NowPlayingManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NowPlayingManager.swift; sourceTree = "<group>"; };
 		DA58C1E12FCEF3F500294720 /* AppDebug.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = AppDebug.entitlements; sourceTree = "<group>"; };
 		DA58C1E22FCEF3F500294721 /* App.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = App.entitlements; sourceTree = "<group>"; };
-		B1W1D3E41FED796500168519 /* SnippetWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SnippetWidget.entitlements; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -437,7 +437,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = dwarf;
-				DEVELOPMENT_TEAM = 6UNK699B5J;
+				DEVELOPMENT_TEAM = ZKZ2RDA7CJ;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Snippet For Spotify";
@@ -449,7 +449,7 @@
 				);
 				MARKETING_VERSION = 1.7.0;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
-				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet-nick.app";
+				PRODUCT_BUNDLE_IDENTIFIER = com.snippet1.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_VERSION = 5.0;
@@ -465,7 +465,7 @@
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 7;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				DEVELOPMENT_TEAM = 6UNK699B5J;
+				DEVELOPMENT_TEAM = ZKZ2RDA7CJ;
 				GCC_GENERATE_DEBUGGING_SYMBOLS = YES;
 				INFOPLIST_FILE = App/Info.plist;
 				INFOPLIST_KEY_CFBundleDisplayName = "Snippet For Spotify";
@@ -476,7 +476,7 @@
 					"@executable_path/Frameworks",
 				);
 				MARKETING_VERSION = 1.7.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet-nick.app";
+				PRODUCT_BUNDLE_IDENTIFIER = com.snippet1.app;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "";
 				SWIFT_VERSION = 5.0;
@@ -501,7 +501,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.7.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet-nick.app.SnippetWidget";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet1.app.SnippetWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
@@ -527,7 +527,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				MARKETING_VERSION = 1.7.0;
-				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet-nick.app.SnippetWidget";
+				PRODUCT_BUNDLE_IDENTIFIER = "com.snippet1.app.SnippetWidget";
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SKIP_INSTALL = YES;
 				SWIFT_VERSION = 5.0;

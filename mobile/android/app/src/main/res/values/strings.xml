@@ -2,6 +2,6 @@
 <resources>
     <string name="app_name">Snippet</string>
     <string name="title_activity_main">Snippet</string>
-    <string name="package_name">com.snippet.app</string>
-    <string name="custom_url_scheme">com.snippet.app</string>
+    <string name="package_name">com.snippet1.app</string>
+    <string name="custom_url_scheme">com.snippet1.app</string>
 </resources>

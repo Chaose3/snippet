@@ -15,14 +15,14 @@ That truncated text is **not** from Snippet code. iOS 17+ shows a system placeho
 
 ## App Group
 
-- **Identifier:** `group.com.snippet-nick.app`
+- **Identifier:** `group.com.snippet1.app`
 - Shared `UserDefaults` key: `snippet.nowPlaying.v1` (JSON snapshot)
 
 ### Apple Developer portal
 
-1. **Identifiers → App Groups** → create `group.com.snippet-nick.app` (if missing).
-2. **Identifiers → App ID** `com.snippet-nick.app` → enable **App Groups** → check `group.com.snippet-nick.app`.
-3. **Identifiers → App ID** `com.snippet-nick.app.SnippetWidget` → enable **App Groups** → check the **same** group.
+1. **Identifiers → App Groups** → create `group.com.snippet1.app` (if missing).
+2. **Identifiers → App ID** `com.snippet1.app` → enable **App Groups** → check `group.com.snippet1.app`.
+3. **Identifiers → App ID** `com.snippet1.app.SnippetWidget` → enable **App Groups** → check the **same** group.
 4. Regenerate **provisioning profiles** for both App IDs (or use Automatic Signing in Xcode after the above).
 
 Both targets must list the group in entitlements:
@@ -35,8 +35,8 @@ Both targets must list the group in entitlements:
 
 | Target | Bundle ID | Role |
 |--------|-----------|------|
-| App | `com.snippet-nick.app` | Main app; writes widget + Now Playing via `WidgetBridgePlugin` |
-| SnippetWidgetExtension | `com.snippet-nick.app.SnippetWidget` | WidgetKit extension (embedded in `App.app/PlugIns/`) |
+| App | `com.snippet1.app` | Main app; writes widget + Now Playing via `WidgetBridgePlugin` |
+| SnippetWidgetExtension | `com.snippet1.app.SnippetWidget` | WidgetKit extension (embedded in `App.app/PlugIns/`) |
 
 Lock screen families: `.accessoryInline`, `.accessoryCircular`, `.accessoryRectangular` (iOS 16+). Extension deployment target: **iOS 17.0**.
 
@@ -79,12 +79,12 @@ When playback sync runs, the app sets `MPNowPlayingInfoCenter` (title, artist, e
 1. With music playing in Snippet, keep the app in the foreground for a few seconds.
 2. The widget should show the track title (not “Please adopt…”, “Not playing / Open Snippet”, or placeholder truncation).
 3. If sync fails (App Group misconfigured), the JS bridge rejects with  
-   `App Group unavailable. Enable group.com.snippet-nick.app on App and SnippetWidgetExtension targets.`
+   `App Group unavailable. Enable group.com.snippet1.app on App and SnippetWidgetExtension targets.`
 
 ## Manual Xcode steps (signing)
 
 1. Open `mobile/ios/App/App.xcodeproj`.
-2. **App** target → **Signing & Capabilities** → **+ Capability** → **App Groups** → enable `group.com.snippet-nick.app`.
+2. **App** target → **Signing & Capabilities** → **+ Capability** → **App Groups** → enable `group.com.snippet1.app`.
 3. **SnippetWidgetExtension** target → same App Group.
 4. **App** target → **General** → **Frameworks, Libraries, and Embedded Content** / embed phase → **SnippetWidgetExtension** should be listed (Embed Foundation Extensions).
 

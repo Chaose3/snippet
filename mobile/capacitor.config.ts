@@ -26,7 +26,7 @@ const devServerUrl =
   '';
 
 const config = {
-  appId: 'com.snippet.app',
+  appId: 'com.snippet1.app',
   appName: 'Snippet',
   // Capacitor sync expects a webDir with an index.html.
   // We'll keep a minimal `mobile/www/index.html` for sync stability.

@@ -2,7 +2,7 @@ import Foundation
 
 /// Shared now-playing snapshot for the Snippet WidgetKit extension (App Group).
 enum WidgetNowPlayingStore {
-    static let appGroupId = "group.com.snippet-nick.app"
+    static let appGroupId = "group.com.snippet1.app"
     private static let storageKey = "snippet.nowPlaying.v1"
 
     struct Snapshot: Codable, Equatable {
